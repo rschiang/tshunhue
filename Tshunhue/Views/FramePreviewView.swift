@@ -1,7 +1,17 @@
+//
+//  FramePreviewView.swift
+//  Tshunhue
+//
+//  Presents a focused frame preview with copy and share actions.
+//
+
 import SwiftUI
 
+/// A modal, enlarged reaction-image preview.
 struct FramePreviewView: View {
+    /// The frame being previewed.
     let frame: CatalogFrame
+    /// The model used to perform outbound transfers.
     @ObservedObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
@@ -24,3 +34,9 @@ struct FramePreviewView: View {
         .frame(minWidth: 440, minHeight: 320)
     }
 }
+
+#if DEBUG
+#Preview("Frame Preview") {
+    FramePreviewView(frame: PreviewData.frame, model: PreviewData.model())
+}
+#endif

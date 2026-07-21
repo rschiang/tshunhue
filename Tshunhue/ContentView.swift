@@ -2,12 +2,14 @@
 //  ContentView.swift
 //  Tshunhue
 //
-//  Created by 姜柏任 on 2026/7/21.
+//  Composes the platform-specific browsing interface and shared presentation state.
 //
 
 import SwiftUI
 
+/// The adaptive root view for Tshunhue's macOS and iOS experiences.
 struct ContentView: View {
+    /// The shared application state and command model.
     @ObservedObject var model: AppModel
     @AppStorage("groupFrames") private var groupFrames = false
 
@@ -21,6 +23,7 @@ struct ContentView: View {
 }
 
 #if os(macOS)
+/// The macOS split-view browser with an independent details inspector.
 private struct MacContentView: View {
     @ObservedObject var model: AppModel
     @Binding var groupFrames: Bool
@@ -102,6 +105,7 @@ private struct MacContentView: View {
     }
 }
 #else
+/// The iOS navigation-based browser and modal settings experience.
 private struct IOSContentView: View {
     @ObservedObject var model: AppModel
     @Binding var groupFrames: Bool
@@ -184,4 +188,8 @@ private struct IOSContentView: View {
         model.groupsBySubsection ? "Group by Subsection" : "Group by Category"
     }
 }
+#endif
+
+#if DEBUG
+#Preview("Content") { ContentView(model: PreviewData.model()) }
 #endif

@@ -1,14 +1,24 @@
+//
+//  CatalogSyncService.swift
+//  Tshunhue
+//
+//  Downloads, validates, and refreshes persisted catalog sources.
+//
+
 import Foundation
 
+/// Serializes source synchronization and preserves the last valid archive on refresh failures.
 actor CatalogSyncService {
     private let client: any HTTPFetching
     private let validator: CatalogValidator
 
+    /// Creates a sync service with injectable networking and validation dependencies.
     init(client: any HTTPFetching = HTTPClient(), validator: CatalogValidator = CatalogValidator()) {
         self.client = client
         self.validator = validator
     }
 
+    /// Downloads and validates a new source index without enabling categories.
     func createSource(url: URL, isDefault: Bool) async throws -> SourceArchive {
         let result = try await client.get(url, byteLimit: CatalogLimits.indexBytes)
         guard let data = result.data else { throw SyncError.missingBody }
@@ -26,6 +36,7 @@ actor CatalogSyncService {
         )
     }
 
+    /// Enables and downloads a category, or removes its persisted metadata.
     func setCategory(_ categoryID: String, enabled: Bool, in original: SourceArchive) async throws -> SourceArchive {
         var archive = original
         let index = try validator.validateIndex(data: archive.index.data, sourceURL: archive.sourceURL)
@@ -51,6 +62,7 @@ actor CatalogSyncService {
         return archive
     }
 
+    /// Conditionally refreshes one archive while retaining its last valid data on failure.
     func refresh(_ original: SourceArchive) async -> SourceArchive {
         var attempted = original
         attempted.lastAttempt = Date()
@@ -103,6 +115,7 @@ actor CatalogSyncService {
         return attempted
     }
 
+    /// Revalidates an archive and returns its index plus enabled frames.
     func validatedContents(of archive: SourceArchive) throws -> (Index, [CatalogFrame]) {
         let index = try validator.validateIndex(data: archive.index.data, sourceURL: archive.sourceURL)
         var frames: [CatalogFrame] = []
@@ -120,6 +133,7 @@ actor CatalogSyncService {
         return (index.index, frames)
     }
 
+    /// Produces lightweight source state for settings and browse navigation.
     func summary(of archive: SourceArchive) throws -> SourceSummary {
         let validated = try validator.validateIndex(data: archive.index.data, sourceURL: archive.sourceURL)
         return SourceSummary(
@@ -134,6 +148,7 @@ actor CatalogSyncService {
         )
     }
 
+    /// Normalizes a source URL before persistence.
     private func canonical(_ url: URL) -> URL {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: true)
         components?.fragment = nil
@@ -145,6 +160,7 @@ actor CatalogSyncService {
     }
 }
 
+/// Failures specific to synchronizing catalog documents.
 enum SyncError: LocalizedError {
     case missingBody
     case missingCategory(String)

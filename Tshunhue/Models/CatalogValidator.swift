@@ -1,20 +1,36 @@
+//
+//  CatalogValidator.swift
+//  Tshunhue
+//
+//  Validates catalog documents and resolves them into safe application models.
+//
+
 import CryptoKit
 import Foundation
 
+/// Resource and safety limits applied to remote catalog content.
 enum CatalogLimits {
+    /// Maximum encoded size of an index document.
     static let indexBytes = 2 * 1_024 * 1_024
+    /// Maximum encoded size of a category document.
     static let categoryBytes = 20 * 1_024 * 1_024
+    /// Application safety boundary for frames in one category.
     static let framesPerCategory = Int(UInt16.max)
+    /// Maximum encoded size of an image download.
     static let imageBytes = 32 * 1_024 * 1_024
+    /// Maximum decoded pixel count for an image.
     static let imagePixels = 50_000_000
+    /// Maximum redirects accepted by one request.
     static let redirects = 5
 }
 
+/// Validates index and category documents before the app stores or displays them.
 struct CatalogValidator: Sendable {
     private let decoder = JSONDecoder()
     private let idExpression = try! NSRegularExpression(pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
     private let languageExpression = try! NSRegularExpression(pattern: "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$")
 
+    /// Decodes and validates an index document and resolves its category URLs.
     func validateIndex(data: Data, sourceURL: URL) throws -> ValidatedIndex {
         guard data.count <= CatalogLimits.indexBytes else {
             throw CatalogValidationError.tooLarge("Index")
@@ -51,6 +67,7 @@ struct CatalogValidator: Sendable {
         return ValidatedIndex(sourceURL: canonicalSourceURL(sourceURL), index: index, categories: categories)
     }
 
+    /// Decodes a category and produces fully resolved, searchable frames.
     func validateCategory(
         data: Data,
         documentURL: URL,
@@ -150,6 +167,7 @@ struct CatalogValidator: Sendable {
         return ValidatedCategory(category: category, frames: validatedFrames)
     }
 
+    /// Derives a stable identifier for a frame that omits an explicit ID.
     func derivedFrameID(categoryID: String, frame: Frame) -> String {
         let input = [
             categoryID,
@@ -161,6 +179,9 @@ struct CatalogValidator: Sendable {
         return digest.prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
+    // MARK: - Validation Helpers
+
+    /// Wraps decoding failures in a catalog-specific error.
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try decoder.decode(type, from: data)
@@ -169,6 +190,7 @@ struct CatalogValidator: Sendable {
         }
     }
 
+    /// Validates an identifier against the catalog's restricted character set.
     private func validateID(_ value: String, field: String) throws {
         let range = NSRange(value.startIndex..<value.endIndex, in: value)
         guard idExpression.firstMatch(in: value, range: range)?.range == range else {
@@ -176,6 +198,7 @@ struct CatalogValidator: Sendable {
         }
     }
 
+    /// Validates a BCP 47-style language identifier accepted by the schema.
     private func validateLanguage(_ value: String) throws {
         let range = NSRange(value.startIndex..<value.endIndex, in: value)
         guard languageExpression.firstMatch(in: value, range: range)?.range == range else {
@@ -183,6 +206,7 @@ struct CatalogValidator: Sendable {
         }
     }
 
+    /// Validates optional attribution text and its destination URL.
     private func validateAttribution(_ attribution: Attribution?) throws {
         guard let attribution else { return }
         guard !attribution.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -191,6 +215,7 @@ struct CatalogValidator: Sendable {
         try validateExternalURL(attribution.url, field: "attribution URL")
     }
 
+    /// Validates provider labels, HTTPS URLs, and supported time placeholders.
     private func validateProviders(_ providers: [Provider]) throws {
         for provider in providers {
             guard !provider.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -213,12 +238,14 @@ struct CatalogValidator: Sendable {
         }
     }
 
+    /// Validates an optional absolute HTTPS URL.
     private func validateExternalURL(_ value: String?, field: String) throws {
         guard let value else { return }
         guard let url = URL(string: value) else { throw CatalogValidationError.invalid(field) }
         try requireAbsoluteHTTPS(url, field: field)
     }
 
+    /// Resolves a media URL relative to its document and requires HTTPS.
     private func resolveMediaURL(_ value: String, relativeTo baseURL: URL, field: String) throws -> URL {
         guard let url = URL(string: value, relativeTo: baseURL)?.absoluteURL else {
             throw CatalogValidationError.invalid(field)
@@ -227,12 +254,14 @@ struct CatalogValidator: Sendable {
         return url
     }
 
+    /// Rejects non-HTTPS, relative, or credential-bearing URLs.
     private func requireAbsoluteHTTPS(_ url: URL, field: String) throws {
         guard url.scheme?.lowercased() == "https", url.host != nil, url.user == nil, url.password == nil else {
             throw CatalogValidationError.invalid(field)
         }
     }
 
+    /// Removes fragments and normalizes URL scheme and host casing.
     private func canonicalSourceURL(_ url: URL) -> URL {
         var components = URLComponents(url: url.absoluteURL, resolvingAgainstBaseURL: true)
         components?.fragment = nil
@@ -244,6 +273,7 @@ struct CatalogValidator: Sendable {
     }
 }
 
+/// User-presentable failures produced while validating catalog data.
 enum CatalogValidationError: LocalizedError, Equatable {
     case decoding(String)
     case unsupportedVersion(Int)

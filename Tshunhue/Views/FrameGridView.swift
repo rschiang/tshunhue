@@ -1,9 +1,21 @@
+//
+//  FrameGridView.swift
+//  Tshunhue
+//
+//  Presents searchable frame results in flat or grouped image grids.
+//
+
 import SwiftUI
 
+/// The primary reaction-image grid and its contextual transfer actions.
 struct FrameGridView: View {
+    /// The model providing visible frames and selection state.
     @ObservedObject var model: AppModel
+    /// The frame currently presented in the larger preview sheet.
     @Binding var previewedFrame: CatalogFrame?
+    /// Whether frames should be divided into category or subsection sections.
     let groupFrames: Bool
+    /// An optional selection callback used to navigate to iOS details.
     var onShowDetails: ((CatalogFrame) -> Void)?
 
     private let columns = [GridItem(.adaptive(minimum: 220, maximum: 420), spacing: 16)]
@@ -38,6 +50,7 @@ struct FrameGridView: View {
         .accessibilityIdentifier("frame-grid")
     }
 
+    /// The appropriate empty-search or empty-catalog message.
     private var emptyState: some View {
         ContentUnavailableView {
             Label(
@@ -49,18 +62,21 @@ struct FrameGridView: View {
         }
     }
 
+    /// The title for the current empty-grid condition.
     private var emptyTitle: LocalizedStringKey {
         if model.hasSearchQuery { return "No Results" }
         if model.isShowingRecents { return "No Recent Images" }
         return "No Images"
     }
 
+    /// Supporting guidance for the current empty-grid condition.
     private var emptyDescription: LocalizedStringKey {
         if model.hasSearchQuery { return "Try fewer words or choose another index or category." }
         if model.isShowingRecents { return "Images you copy, share, or drag will appear here." }
         return "Add a source and enable categories in Settings."
     }
 
+    /// Builds a category or subsection heading for grouped results.
     private func sectionHeader(_ section: FrameSection) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(section.title)
@@ -75,6 +91,7 @@ struct FrameGridView: View {
         .padding(.top, 8)
     }
 
+    /// Builds one selectable, draggable frame cell and its context menu.
     private func frameCell(_ frame: CatalogFrame) -> some View {
         Button {
             model.selectedFrameID = frame.identity
@@ -125,3 +142,14 @@ struct FrameGridView: View {
         .draggable(model.transferItem(for: frame))
     }
 }
+
+#if DEBUG
+#Preview("Frame Grid") {
+    FrameGridView(
+        model: PreviewData.model(),
+        previewedFrame: .constant(nil),
+        groupFrames: false
+    )
+    .frame(width: 700, height: 520)
+}
+#endif

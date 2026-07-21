@@ -1,6 +1,15 @@
+//
+//  InitialCategoryPickerView.swift
+//  Tshunhue
+//
+//  Guides first-run users through choosing searchable categories.
+//
+
 import SwiftUI
 
+/// The first-run category selection sheet.
 struct InitialCategoryPickerView: View {
+    /// The model used to enable categories and dismiss onboarding.
     @ObservedObject var model: AppModel
 
     var body: some View {
@@ -56,3 +65,9 @@ struct InitialCategoryPickerView: View {
         .frame(minWidth: 520, minHeight: 480)
     }
 }
+
+#if DEBUG
+#Preview("Initial Category Picker") {
+    InitialCategoryPickerView(model: PreviewData.model())
+}
+#endif

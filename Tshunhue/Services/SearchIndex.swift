@@ -1,6 +1,15 @@
+//
+//  SearchIndex.swift
+//  Tshunhue
+//
+//  Indexes normalized captions and tags for asynchronous local search.
+//
+
 import Foundation
 
+/// An actor-isolated in-memory search index for catalog frames.
 actor SearchIndex {
+    /// A frame paired with its normalized searchable values.
     private struct Entry: Sendable {
         let frame: CatalogFrame
         let caption: String
@@ -9,6 +18,7 @@ actor SearchIndex {
 
     private var entries: [Entry] = []
 
+    /// Replaces the entire index with the current enabled catalog frames.
     func replace(with frames: [CatalogFrame]) {
         entries = frames.map { frame in
             let locale = Locale(identifier: frame.language)
@@ -20,6 +30,7 @@ actor SearchIndex {
         }
     }
 
+    /// Finds frames containing every query term and ranks caption matches first.
     func search(_ query: String, categoryIDs: Set<CategoryKey>) -> [CatalogFrame] {
         let rawTerms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !rawTerms.isEmpty else { return [] }
@@ -54,6 +65,7 @@ actor SearchIndex {
         .map(\.0)
     }
 
+    /// Folds case, diacritics, and width using the frame's language locale.
     private static func normalize(_ value: String, locale: Locale) -> String {
         value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: locale)
     }

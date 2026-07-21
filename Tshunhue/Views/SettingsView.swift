@@ -1,6 +1,15 @@
+//
+//  SettingsView.swift
+//  Tshunhue
+//
+//  Presents source, synchronization, storage, privacy, and app information controls.
+//
+
 import SwiftUI
 
+/// The main settings form shared by the macOS settings scene and iOS sheet.
 struct SettingsView: View {
+    /// The model that owns source, refresh, and storage settings.
     @ObservedObject var model: AppModel
     @State private var showingAddSource = false
     @State private var showingPrivacy = false
@@ -126,11 +135,15 @@ struct SettingsView: View {
         .task { await model.refreshCacheSize() }
     }
 
+    /// A localized, human-readable representation of the image cache size.
     private var formattedCacheSize: String {
         ByteCountFormatter.string(fromByteCount: Int64(model.cacheByteCount), countStyle: .file)
     }
 }
 
+// MARK: - Informational Sheets
+
+/// The app's concise local-data and network privacy disclosure.
 private struct PolicyView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -152,9 +165,11 @@ private struct PolicyView: View {
     }
 }
 
+/// A compact application identity and version view.
 private struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
 
+    /// The user-facing short version from the application bundle.
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
@@ -183,7 +198,11 @@ private struct AboutView: View {
     }
 }
 
+// MARK: - Source Entry
+
+/// A sheet for validating and adding a custom HTTPS index URL.
 private struct AddSourceView: View {
+    /// The model used to create the source.
     @ObservedObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var sourceURL = ""
@@ -220,3 +239,23 @@ private struct AddSourceView: View {
         .frame(minWidth: 440, minHeight: 240)
     }
 }
+
+// MARK: - Previews
+
+#if DEBUG
+#Preview("Settings") {
+    SettingsView(model: PreviewData.model())
+}
+
+#Preview("Privacy Policy") {
+    PolicyView()
+}
+
+#Preview("About") {
+    AboutView()
+}
+
+#Preview("Add Source") {
+    AddSourceView(model: PreviewData.model())
+}
+#endif

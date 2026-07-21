@@ -1,7 +1,17 @@
+//
+//  FrameDetailsView.swift
+//  Tshunhue
+//
+//  Displays a frame's metadata, destinations, and transfer actions.
+//
+
 import SwiftUI
 
+/// The details presentation used by the macOS inspector and iOS navigation.
 struct FrameDetailsView: View {
+    /// The frame whose metadata is displayed.
     let frame: CatalogFrame
+    /// The model used for report links and transfer actions.
     @ObservedObject var model: AppModel
 
     var body: some View {
@@ -68,3 +78,10 @@ struct FrameDetailsView: View {
         .navigationTitle("Details")
     }
 }
+
+#if DEBUG
+#Preview("Frame Details") {
+    FrameDetailsView(frame: PreviewData.frame, model: PreviewData.model())
+        .frame(width: 360, height: 640)
+}
+#endif

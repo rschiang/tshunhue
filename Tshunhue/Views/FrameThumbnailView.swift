@@ -1,8 +1,19 @@
+//
+//  FrameThumbnailView.swift
+//  Tshunhue
+//
+//  Loads and presents a cached thumbnail for a catalog frame.
+//
+
 import SwiftUI
 
+/// An asynchronous frame image with progress, error, and retry states.
 struct FrameThumbnailView: View {
+    /// The frame whose image should be loaded.
     let frame: CatalogFrame
+    /// The repository that downloads and caches the image.
     let repository: ImageRepository
+    /// Whether to request and style a larger preview image.
     var large = false
 
     @State private var thumbnail: ImageThumbnail?
@@ -52,3 +63,12 @@ struct FrameThumbnailView: View {
         .accessibilityLabel(frame.frame.caption)
     }
 }
+
+#if DEBUG
+#Preview("Frame Thumbnail") {
+    let model = PreviewData.model()
+    FrameThumbnailView(frame: PreviewData.frame, repository: model.imageRepository)
+        .frame(width: 420)
+        .padding()
+}
+#endif

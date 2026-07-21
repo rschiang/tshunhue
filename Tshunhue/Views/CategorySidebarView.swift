@@ -1,6 +1,15 @@
+//
+//  CategorySidebarView.swift
+//  Tshunhue
+//
+//  Presents recent, index, and category browsing scopes.
+//
+
 import SwiftUI
 
+/// A flat browse-scope list shared by the macOS sidebar and iOS filter sheet.
 struct CategorySidebarView: View {
+    /// The application model whose selected scope this view controls.
     @ObservedObject var model: AppModel
 
     var body: some View {
@@ -40,6 +49,7 @@ struct CategorySidebarView: View {
         .navigationTitle("Browse")
     }
 
+    /// Builds a selectable row for a browse scope.
     private func scopeRow(_ scope: CatalogScope, title: String, systemImage: String) -> some View {
         Button {
             model.selectedScope = scope
@@ -57,13 +67,22 @@ struct CategorySidebarView: View {
         .accessibilityAddTraits(model.selectedScope == scope ? .isSelected : [])
     }
 
+    /// Highlights the active browse scope without changing list structure.
     private func rowBackground(for scope: CatalogScope) -> some View {
         RoundedRectangle(cornerRadius: 6)
             .fill(model.selectedScope == scope ? Color.accentColor.opacity(0.18) : Color.clear)
     }
 
+    /// Combines source and language context for a category row.
     private func categoryDescription(_ category: CategoryDescriptor, source: SourceSummary) -> String {
         guard let language = category.language else { return source.name }
         return "\(source.name) · \(language)"
     }
 }
+
+#if DEBUG
+#Preview("Browse Scopes") {
+    CategorySidebarView(model: PreviewData.model())
+        .frame(width: 280, height: 520)
+}
+#endif

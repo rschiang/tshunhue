@@ -1,8 +1,17 @@
+//
+//  JPEGEncoder.swift
+//  Tshunhue
+//
+//  Normalizes outbound images into interoperable JPEG data.
+//
+
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
+/// Encodes transfer images as oriented, opaque sRGB JPEGs.
 enum JPEGEncoder {
+    /// Preserves existing JPEG bytes or transcodes another static image format.
     static func data(for asset: ImageAsset) throws -> Data {
         if asset.type.conforms(to: .jpeg) {
             return asset.data
@@ -28,6 +37,7 @@ enum JPEGEncoder {
             throw JPEGEncodingError.cannotEncode
         }
 
+        // JPEG has no alpha channel, so composite transparent sources onto white.
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: image.width, height: image.height))
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
@@ -50,6 +60,7 @@ enum JPEGEncoder {
     }
 }
 
+/// Failures produced while converting an image to JPEG.
 enum JPEGEncodingError: LocalizedError {
     case cannotEncode
 

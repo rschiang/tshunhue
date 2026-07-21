@@ -1,38 +1,68 @@
+//
+//  ImageRepository.swift
+//  Tshunhue
+//
+//  Downloads, validates, caches, and thumbnails reaction images.
+//
+
 import CryptoKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
+/// A validated image together with its format, dimensions, and cache location.
 struct ImageAsset: Sendable {
+    /// Original encoded image bytes.
     let data: Data
+    /// The detected uniform type of the bytes.
     let type: UTType
+    /// Decoded pixel width before display transforms.
     let width: Int
+    /// Decoded pixel height before display transforms.
     let height: Int
+    /// The file containing the cached encoded bytes.
     let localURL: URL
 }
 
+/// A display-ready thumbnail safe to pass across isolation boundaries.
 struct ImageThumbnail: @unchecked Sendable {
+    /// The immutable Core Graphics image rendered by SwiftUI or UIKit.
     let image: CGImage
 }
 
+/// An Objective-C-compatible wrapper used by `NSCache`.
 private final class ThumbnailBox {
+    /// The thumbnail retained by the cache.
     let image: CGImage
+    /// Wraps a Core Graphics image for `NSCache` storage.
     init(_ image: CGImage) { self.image = image }
 }
 
+/// Persisted metadata for one cached image file.
 private struct ImageCacheEntry: Codable, Sendable {
+    /// The SHA-256 cache key.
     let key: String
+    /// The original remote image URL.
     let sourceURL: URL
+    /// The cache-relative image filename.
     let filename: String
+    /// The detected uniform type identifier.
     var typeIdentifier: String
+    /// The decoded pixel width.
     var width: Int
+    /// The decoded pixel height.
     var height: Int
+    /// The encoded file size used for budget accounting.
     var byteCount: Int
+    /// Conditional-request and freshness metadata.
     var metadata: HTTPMetadata
+    /// The time the current bytes were downloaded.
     var downloadedAt: Date
+    /// The time the entry was most recently read.
     var lastAccess: Date
 }
 
+/// An actor-isolated image cache with request coalescing and LRU eviction.
 actor ImageRepository {
     private let directory: URL
     private let indexURL: URL
@@ -42,6 +72,7 @@ actor ImageRepository {
     private var inFlight: [URL: Task<ImageAsset, Error>] = [:]
     private let thumbnails = NSCache<NSString, ThumbnailBox>()
 
+    /// Creates a repository rooted at a cache directory with a fixed byte budget.
     init(directory: URL, byteBudget: Int, client: any HTTPFetching = HTTPClient()) {
         self.directory = directory
         self.indexURL = directory.appendingPathComponent("index.json")
@@ -49,6 +80,7 @@ actor ImageRepository {
         self.client = client
     }
 
+    /// Loads the cache index, repairs corruption, and enforces the byte budget.
     func load() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         guard FileManager.default.fileExists(atPath: indexURL.path) else { return }
@@ -70,6 +102,7 @@ actor ImageRepository {
         try evictIfNeeded()
     }
 
+    /// Returns a cached or freshly downloaded validated image.
     func asset(for url: URL) async throws -> ImageAsset {
         if let task = inFlight[url] { return try await task.value }
         let task = Task { try await self.loadAsset(for: url) }
@@ -78,6 +111,7 @@ actor ImageRepository {
         return try await task.value
     }
 
+    /// Returns a transformed thumbnail no larger than the requested pixel dimension.
     func thumbnail(for url: URL, maxPixelSize: Int) async throws -> ImageThumbnail {
         let thumbnailKey = "\(url.absoluteString)#\(maxPixelSize)" as NSString
         if let cached = thumbnails.object(forKey: thumbnailKey) {
@@ -96,8 +130,10 @@ actor ImageRepository {
         return ImageThumbnail(image: thumbnail)
     }
 
+    /// The total number of image bytes tracked by the cache index.
     func cacheSize() -> Int { entries.values.reduce(0) { $0 + $1.byteCount } }
 
+    /// Cancels active loads and removes every cached image.
     func clear() throws {
         for task in inFlight.values { task.cancel() }
         inFlight = [:]
@@ -109,6 +145,9 @@ actor ImageRepository {
         try persistIndex()
     }
 
+    // MARK: - Loading and Validation
+
+    /// Resolves an image from fresh cache, conditional refresh, or a new download.
     private func loadAsset(for url: URL) async throws -> ImageAsset {
         let key = cacheKey(for: url)
         if var entry = entries[key] {
@@ -150,6 +189,7 @@ actor ImageRepository {
         return try store(data, from: url, metadata: result.metadata, key: key)
     }
 
+    /// Validates and atomically stores downloaded image data.
     private func store(_ data: Data, from url: URL, metadata: HTTPMetadata, key: String) throws -> ImageAsset {
         let properties = try inspect(data)
         let filename = key + ".image"
@@ -178,6 +218,7 @@ actor ImageRepository {
         )
     }
 
+    /// Recreates an image asset from persisted metadata and bytes.
     private func read(_ entry: ImageCacheEntry, fileURL: URL) throws -> ImageAsset {
         guard let type = UTType(entry.typeIdentifier) else { throw ImageRepositoryError.cannotDecode }
         return ImageAsset(
@@ -189,6 +230,7 @@ actor ImageRepository {
         )
     }
 
+    /// Verifies a single static image and returns its format and dimensions.
     private func inspect(_ data: Data) throws -> (type: UTType, width: Int, height: Int) {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) == 1,
@@ -207,11 +249,15 @@ actor ImageRepository {
         return (type, width, height)
     }
 
+    // MARK: - Cache Maintenance
+
+    /// Determines freshness from HTTP expiration or the one-week fallback lifetime.
     private func isFresh(_ entry: ImageCacheEntry) -> Bool {
         let expiry = entry.metadata.expires ?? entry.downloadedAt.addingTimeInterval(604_800)
         return expiry > Date()
     }
 
+    /// Fills missing response metadata from a previous cache entry.
     private func merged(_ metadata: HTTPMetadata, fallback: HTTPMetadata) -> HTTPMetadata {
         HTTPMetadata(
             etag: metadata.etag ?? fallback.etag,
@@ -220,10 +266,12 @@ actor ImageRepository {
         )
     }
 
+    /// Hashes a source URL into a filesystem-safe stable cache key.
     private func cacheKey(for url: URL) -> String {
         SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Removes index entries whose image files no longer exist.
     private func discardMissingFiles() throws {
         entries = entries.filter { _, entry in
             FileManager.default.fileExists(atPath: directory.appendingPathComponent(entry.filename).path)
@@ -231,6 +279,7 @@ actor ImageRepository {
         try persistIndex()
     }
 
+    /// Evicts least-recently-used images until the byte budget is met.
     private func evictIfNeeded(excluding protectedKey: String? = nil) throws {
         var total = cacheSize()
         for entry in entries.values.sorted(by: { $0.lastAccess < $1.lastAccess })
@@ -241,12 +290,14 @@ actor ImageRepository {
         }
     }
 
+    /// Atomically writes a deterministic cache-index document.
     private func persistIndex() throws {
         let data = try JSONEncoder().encode(entries.values.sorted { $0.key < $1.key })
         try data.write(to: indexURL, options: .atomic)
     }
 }
 
+/// Failures produced while loading and inspecting images.
 enum ImageRepositoryError: LocalizedError {
     case missingData
     case cannotDecode

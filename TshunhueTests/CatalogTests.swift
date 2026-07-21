@@ -1,9 +1,19 @@
+//
+//  CatalogTests.swift
+//  TshunhueTests
+//
+//  Verifies catalog validation, browsing, persistence, search, sync, and image transfer behavior.
+//
+
 import Foundation
 import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import Tshunhue
 
+// MARK: - Catalog Validation
+
+/// Tests schema semantics, timecodes, URL policy, and resolved frame metadata.
 struct CatalogTests {
     private let validator = CatalogValidator()
     private let sourceURL = URL(string: "https://example.com/catalog/index.json")!
@@ -274,6 +284,9 @@ struct CatalogTests {
     }
 }
 
+// MARK: - Search
+
+/// Tests locale-aware matching, ranking, and category-filter isolation.
 struct SearchIndexTests {
     @Test func matchesWhitespaceSeparatedCJKTermsAndRanksCaptions() async throws {
         let sourceURL = URL(string: "https://example.com/index.json")!
@@ -330,6 +343,9 @@ struct SearchIndexTests {
     }
 }
 
+// MARK: - Browsing and Grouping
+
+/// Tests browse-scope resolution and deterministic grouped-grid sections.
 struct CatalogBrowsingTests {
     @Test func resolvesSingleScopesAndRecentOrdering() {
         let firstURL = URL(string: "https://one.example/index.json")!
@@ -486,6 +502,9 @@ struct CatalogBrowsingTests {
     }
 }
 
+// MARK: - Recents
+
+/// Tests bounded recent-item persistence and scoped removal.
 struct RecentStoreTests {
     @Test func storesFiveDeduplicatedItems() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -518,6 +537,9 @@ struct RecentStoreTests {
     }
 }
 
+// MARK: - Synchronization
+
+/// Tests conditional refreshes and last-known-good archive behavior.
 struct SyncTests {
     @Test func conditionalRefreshPreservesTheCompleteLastKnownGoodCatalog() async throws {
         let sourceURL = URL(string: "https://example.com/index.json")!
@@ -544,6 +566,9 @@ struct SyncTests {
     }
 }
 
+// MARK: - Image Cache and Transfers
+
+/// Tests cache recovery and the JPEG-only outbound transfer contract.
 struct ImageRepositoryTests {
     @Test func corruptIndexIsDiscardedWithoutBlockingStartup() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -636,6 +661,9 @@ struct ImageRepositoryTests {
         #expect(await recentStore.all().isEmpty)
     }
 
+    // MARK: Fixtures
+
+    /// Wraps fixture bytes in an image asset with a disposable local URL.
     private func imageAsset(data: Data, type: UTType, width: Int, height: Int) -> ImageAsset {
         ImageAsset(
             data: data,
@@ -646,6 +674,7 @@ struct ImageRepositoryTests {
         )
     }
 
+    /// Encodes a one-frame image fixture with optional orientation metadata.
     private func makeImageData(
         type: UTType,
         width: Int,
@@ -681,6 +710,7 @@ struct ImageRepositoryTests {
         return data as Data
     }
 
+    /// Renders the first image pixel into an sRGB RGBA buffer.
     private func rgbaPixel(from data: Data) throws -> [UInt8] {
         let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
         let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
@@ -703,6 +733,7 @@ struct ImageRepositoryTests {
         return pixel
     }
 
+    /// Creates a representative frame for transfer tests.
     private func transferFrame(caption: String, imageURL: URL? = nil) -> CatalogFrame {
         let sourceURL = URL(string: "https://example.com/index.json")!
         let resolvedImageURL = imageURL ?? sourceURL.appendingPathComponent("frame.png")
@@ -726,7 +757,9 @@ struct ImageRepositoryTests {
     }
 }
 
+/// A deterministic HTTP client that returns scripted responses and records requests.
 private actor ScriptedHTTPClient: HTTPFetching {
+    /// One expected request and its canned response.
     struct Step: Sendable {
         let url: URL
         let status: Int
@@ -734,6 +767,7 @@ private actor ScriptedHTTPClient: HTTPFetching {
         var headers: [String: String] = [:]
     }
 
+    /// One captured request for validator and limit assertions.
     struct Request: Sendable {
         let url: URL
         let validators: HTTPMetadata?
@@ -743,10 +777,12 @@ private actor ScriptedHTTPClient: HTTPFetching {
     private var steps: [Step]
     private(set) var requests: [Request] = []
 
+    /// Creates a client that consumes responses in order.
     init(steps: [Step]) {
         self.steps = steps
     }
 
+    /// Records a request and returns the next matching scripted response.
     func get(_ url: URL, validators: HTTPMetadata?, byteLimit: Int) async throws -> HTTPResult {
         requests.append(Request(url: url, validators: validators, byteLimit: byteLimit))
         guard !steps.isEmpty else { throw HTTPClientError.invalidResponse }
@@ -770,6 +806,9 @@ private actor ScriptedHTTPClient: HTTPFetching {
     }
 }
 
+// MARK: - Checked-Out Data
+
+/// Validates the nested data repository when a local checkout is available.
 struct DataCheckoutTests {
     @Test func validatesLocalCheckoutWhenPresent() throws {
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

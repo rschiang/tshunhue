@@ -1,3 +1,10 @@
+//
+//  TransferService.swift
+//  Tshunhue
+//
+//  Exports frames as JPEG data or files for copy, share, and drag operations.
+//
+
 import CoreTransferable
 import Foundation
 import UniformTypeIdentifiers
@@ -8,16 +15,22 @@ import AppKit
 import UIKit
 #endif
 
+/// A lazily prepared JPEG transfer that records successful use in recents.
 struct FrameTransferItem: Transferable, Sendable {
+    /// The frame whose image is exported.
     let frame: CatalogFrame
+    /// The repository supplying validated source bytes.
     let repository: ImageRepository
+    /// The store updated after transfer preparation succeeds.
     let recentStore: RecentStore
 
+    /// Downloads the source image and normalizes it to JPEG data.
     func jpegData() async throws -> Data {
         let asset = try await repository.asset(for: frame.imageURL)
         return try JPEGEncoder.data(for: asset)
     }
 
+    /// Concrete JPEG file and data representations for destination compatibility.
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .jpeg) { value in
             let data = try await value.jpegData()
@@ -33,8 +46,10 @@ struct FrameTransferItem: Transferable, Sendable {
     }
 }
 
+/// Main-actor pasteboard operations and platform-neutral temporary file export.
 @MainActor
 enum TransferService {
+    /// Copies a normalized JPEG to the system pasteboard.
     static func copy(_ asset: ImageAsset) throws {
         let data = try JPEGEncoder.data(for: asset)
         #if os(macOS)
@@ -48,6 +63,7 @@ enum TransferService {
         #endif
     }
 
+    /// Writes JPEG data to a uniquely named temporary transfer file.
     nonisolated static func exportJPEGFile(for frame: CatalogFrame, data: Data) throws -> URL {
         let base = sanitizedFilename(frame.frame.caption)
         let directory = FileManager.default.temporaryDirectory
@@ -59,6 +75,7 @@ enum TransferService {
         return url
     }
 
+    /// Converts a caption into a short, filesystem-safe export name.
     nonisolated static func sanitizedFilename(_ caption: String) -> String {
         let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>\n\r\t")
         let parts = caption.components(separatedBy: invalid).joined(separator: " ")
@@ -67,6 +84,7 @@ enum TransferService {
     }
 }
 
+/// Failures produced by explicit copy operations.
 enum TransferError: LocalizedError {
     case cannotWritePasteboard
 

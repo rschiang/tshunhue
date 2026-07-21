@@ -1,11 +1,23 @@
+//
+//  KeyboardViewController.swift
+//  TshunhueKeyboard
+//
+//  Hosts the SwiftUI keyboard interface and reads shared Tshunhue catalog data.
+//
+
 import Combine
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+// MARK: - Extension Controller
+
+/// The UIKit entry point that embeds Tshunhue's keyboard SwiftUI hierarchy.
 final class KeyboardViewController: UIInputViewController {
+    /// The hosted SwiftUI keyboard retained for the controller lifetime.
     private var host: UIHostingController<KeyboardRootView>?
 
+    /// Installs the hosted keyboard view and begins loading shared catalog data.
     override func viewDidLoad() {
         super.viewDidLoad()
         let catalog = KeyboardCatalog()
@@ -33,17 +45,26 @@ final class KeyboardViewController: UIInputViewController {
     }
 }
 
+// MARK: - Shared Catalog
+
+/// Observable catalog and image-transfer state local to the keyboard extension.
 @MainActor
 private final class KeyboardCatalog: ObservableObject {
+    /// The keyboard's current search query.
     @Published var query = ""
+    /// Frames loaded from enabled shared source archives.
     @Published var frames: [CatalogFrame] = []
+    /// The most recently copied frame, used for transient feedback.
     @Published var copiedFrameID: FrameIdentity?
+    /// A loading or permission error shown in the keyboard.
     @Published var error: String?
 
     private let repository: ImageRepository?
     private let recentStore: RecentStore?
+    /// Whether the extension may use networking and the general pasteboard.
     var hasFullAccess = false
 
+    /// Connects to the app-group stores when their container is available.
     init() {
         let root = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.tw.poren.Tshunhue"
@@ -60,6 +81,7 @@ private final class KeyboardCatalog: ObservableObject {
         }
     }
 
+    /// Frames matching all normalized query terms, capped when browsing without a query.
     var results: [CatalogFrame] {
         let terms = query.split(whereSeparator: \.isWhitespace).map {
             String($0).folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
@@ -73,6 +95,7 @@ private final class KeyboardCatalog: ObservableObject {
         }
     }
 
+    /// Loads enabled frames from independently validated shared source archives.
     func load() async {
         guard let repository, let recentStore,
               let root = FileManager.default.containerURL(
@@ -118,6 +141,7 @@ private final class KeyboardCatalog: ObservableObject {
         }
     }
 
+    /// Copies a frame as JPEG and records it after a successful pasteboard write.
     func copy(_ frame: CatalogFrame) async {
         guard let repository, let recentStore else { return }
         guard hasFullAccess else {
@@ -135,6 +159,7 @@ private final class KeyboardCatalog: ObservableObject {
         }
     }
 
+    /// Loads a compact UIKit thumbnail for a keyboard grid cell.
     func thumbnail(for frame: CatalogFrame) async -> UIImage? {
         guard let repository else { return nil }
         guard let thumbnail = try? await repository.thumbnail(for: frame.imageURL, maxPixelSize: 320) else {
@@ -144,6 +169,9 @@ private final class KeyboardCatalog: ObservableObject {
     }
 }
 
+// MARK: - Keyboard Views
+
+/// The keyboard's search field, state messaging, and compact frame grid.
 private struct KeyboardRootView: View {
     @ObservedObject var catalog: KeyboardCatalog
     let hasFullAccess: Bool
@@ -190,6 +218,7 @@ private struct KeyboardRootView: View {
     }
 }
 
+/// A compact frame button supporting image copy and caption insertion.
 private struct KeyboardFrameButton: View {
     let frame: CatalogFrame
     let copied: Bool
@@ -226,3 +255,62 @@ private struct KeyboardFrameButton: View {
         .task { image = await loadImage() }
     }
 }
+
+// MARK: - Previews
+
+#if DEBUG
+/// Minimal catalog fixture used only by keyboard-extension previews.
+private enum KeyboardPreviewData {
+    /// A representative frame that does not require loading shared app data.
+    static let frame = CatalogFrame(
+        identity: FrameIdentity(
+            sourceURL: URL(string: "https://example.com/index.json")!,
+            categoryID: "spring-flowers",
+            frameID: "welcome"
+        ),
+        sourceName: "Tshun-lit-iánn",
+        categoryID: "spring-flowers",
+        categoryName: "Spring Flowers",
+        language: "zh-Hant-TW",
+        subsection: nil,
+        frame: Frame(
+            id: "welcome",
+            url: "https://example.com/welcome.jpg",
+            caption: "Welcome to Tshunhue!",
+            tags: ["welcome"],
+            subsection: nil,
+            timecode: nil
+        ),
+        effectiveID: "welcome",
+        imageURL: URL(string: "https://example.com/welcome.jpg")!,
+        providers: [],
+        attribution: nil,
+        reportURL: nil,
+        categoryOrder: 0,
+        subsectionOrder: nil,
+        order: 0
+    )
+}
+
+#Preview("Keyboard") {
+    KeyboardRootView(
+        catalog: KeyboardCatalog(),
+        hasFullAccess: false,
+        advanceKeyboard: {},
+        insertCaption: { _ in }
+    )
+    .frame(height: 320)
+}
+
+#Preview("Keyboard Frame") {
+    KeyboardFrameButton(
+        frame: KeyboardPreviewData.frame,
+        copied: false,
+        loadImage: { nil },
+        copy: {},
+        insertCaption: {}
+    )
+    .frame(width: 120)
+    .padding()
+}
+#endif

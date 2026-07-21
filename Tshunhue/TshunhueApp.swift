@@ -2,12 +2,13 @@
 //  TshunhueApp.swift
 //  Tshunhue
 //
-//  Created by 姜柏任 on 2026/7/21.
+//  Defines the application entry point, scenes, and lifecycle refresh behavior.
 //
 
 import SwiftUI
 
 @main
+/// The shared SwiftUI application entry point for macOS and iOS.
 struct TshunhueApp: App {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
