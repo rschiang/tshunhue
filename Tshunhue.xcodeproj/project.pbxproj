@@ -14,6 +14,7 @@
 		A10000000000000000000024 /* SourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* SourceStore.swift */; };
 		A10000000000000000000025 /* ImageRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* ImageRepository.swift */; };
 		A10000000000000000000026 /* RecentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* RecentStore.swift */; };
+		A10000000000000000000027 /* JPEGEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* JPEGEncoder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +63,7 @@
 		A10000000000000000000014 /* SourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/SourceStore.swift; sourceTree = SOURCE_ROOT; };
 		A10000000000000000000015 /* ImageRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/ImageRepository.swift; sourceTree = SOURCE_ROOT; };
 		A10000000000000000000016 /* RecentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/RecentStore.swift; sourceTree = SOURCE_ROOT; };
+		A10000000000000000000017 /* JPEGEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/JPEGEncoder.swift; sourceTree = SOURCE_ROOT; };
 		2B335C55300F504E0069B097 /* Tshunhue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tshunhue.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2B335C62300F50500069B097 /* TshunhueTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TshunhueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2B335C6C300F50500069B097 /* TshunhueUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TshunhueUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -168,6 +170,7 @@
 				A10000000000000000000014 /* SourceStore.swift */,
 				A10000000000000000000015 /* ImageRepository.swift */,
 				A10000000000000000000016 /* RecentStore.swift */,
+				A10000000000000000000017 /* JPEGEncoder.swift */,
 			);
 			name = "Keyboard Shared Sources";
 			sourceTree = "<group>";
@@ -358,6 +361,7 @@
 				A10000000000000000000024 /* SourceStore.swift in Sources */,
 				A10000000000000000000025 /* ImageRepository.swift in Sources */,
 				A10000000000000000000026 /* RecentStore.swift in Sources */,
+				A10000000000000000000027 /* JPEGEncoder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

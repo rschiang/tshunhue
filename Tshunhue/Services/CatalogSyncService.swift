@@ -106,9 +106,9 @@ actor CatalogSyncService {
     func validatedContents(of archive: SourceArchive) throws -> (Index, [CatalogFrame]) {
         let index = try validator.validateIndex(data: archive.index.data, sourceURL: archive.sourceURL)
         var frames: [CatalogFrame] = []
-        for categoryID in archive.enabledCategoryIDs.sorted() {
-            guard let descriptor = index.categories.first(where: { $0.descriptor.id == categoryID }),
-                  let document = archive.categories[categoryID] else { continue }
+        for descriptor in index.categories where archive.enabledCategoryIDs.contains(descriptor.descriptor.id) {
+            let categoryID = descriptor.descriptor.id
+            guard let document = archive.categories[categoryID] else { continue }
             let category = try validator.validateCategory(
                 data: document.data,
                 documentURL: descriptor.url,

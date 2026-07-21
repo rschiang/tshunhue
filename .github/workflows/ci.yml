@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test macOS
+        run: >-
+          xcodebuild test
+          -project Tshunhue.xcodeproj
+          -scheme Tshunhue
+          -destination 'platform=macOS'
+          -derivedDataPath /tmp/TshunhueDerivedData
+          -only-testing:TshunhueTests
+          CODE_SIGNING_ALLOWED=NO
+      - name: Compile UI tests
+        run: >-
+          xcodebuild build-for-testing
+          -project Tshunhue.xcodeproj
+          -scheme Tshunhue
+          -destination 'platform=macOS'
+          -derivedDataPath /tmp/TshunhueDerivedData
+          CODE_SIGNING_ALLOWED=NO
+      - name: Build iOS
+        run: >-
+          xcodebuild build
+          -project Tshunhue.xcodeproj
+          -scheme Tshunhue
+          -destination 'generic/platform=iOS'
+          -derivedDataPath /tmp/TshunhueDerivedData-iOS
+          CODE_SIGNING_ALLOWED=NO

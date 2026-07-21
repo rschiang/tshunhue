@@ -3,6 +3,7 @@ import SwiftUI
 struct FrameGridView: View {
     @ObservedObject var model: AppModel
     @Binding var previewedFrame: CatalogFrame?
+    let groupFrames: Bool
     var onShowDetails: ((CatalogFrame) -> Void)?
 
     private let columns = [GridItem(.adaptive(minimum: 220, maximum: 420), spacing: 16)]
@@ -14,8 +15,20 @@ struct FrameGridView: View {
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(model.displayedFrames) { frame in
-                            frameCell(frame)
+                        if groupFrames {
+                            ForEach(model.frameSections) { section in
+                                Section {
+                                    ForEach(section.frames) { frame in
+                                        frameCell(frame)
+                                    }
+                                } header: {
+                                    sectionHeader(section)
+                                }
+                            }
+                        } else {
+                            ForEach(model.displayedFrames) { frame in
+                                frameCell(frame)
+                            }
                         }
                     }
                     .padding()
@@ -28,14 +41,38 @@ struct FrameGridView: View {
     private var emptyState: some View {
         ContentUnavailableView {
             Label(
-                model.query.isEmpty ? "Find the perfect reaction" : "No Results",
-                systemImage: model.query.isEmpty ? "sparkles.rectangle.stack" : "magnifyingglass"
+                emptyTitle,
+                systemImage: model.hasSearchQuery ? "magnifyingglass" : "sparkles.rectangle.stack"
             )
         } description: {
-            Text(model.query.isEmpty
-                 ? "Add a source and enable categories in Settings, then start typing to search."
-                 : "Try fewer words or enable another category.")
+            Text(emptyDescription)
         }
+    }
+
+    private var emptyTitle: LocalizedStringKey {
+        if model.hasSearchQuery { return "No Results" }
+        if model.isShowingRecents { return "No Recent Images" }
+        return "No Images"
+    }
+
+    private var emptyDescription: LocalizedStringKey {
+        if model.hasSearchQuery { return "Try fewer words or choose another index or category." }
+        if model.isShowingRecents { return "Images you copy, share, or drag will appear here." }
+        return "Add a source and enable categories in Settings."
+    }
+
+    private func sectionHeader(_ section: FrameSection) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(section.title)
+                .font(.title3.bold())
+            if let subtitle = section.subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
     }
 
     private func frameCell(_ frame: CatalogFrame) -> some View {
@@ -75,7 +112,7 @@ struct FrameGridView: View {
             ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption)) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
-            if model.query.isEmpty {
+            if model.isShowingRecents {
                 Divider()
                 Button("Remove from Recents", systemImage: "clock.badge.xmark") {
                     Task { await model.removeRecent(frame) }
@@ -85,9 +122,6 @@ struct FrameGridView: View {
             FramePreviewView(frame: frame, model: model)
                 .frame(idealWidth: 640, idealHeight: 480)
         }
-        .draggable(model.transferItem(for: frame)) {
-            FrameThumbnailView(frame: frame, repository: model.imageRepository)
-                .frame(width: 240)
-        }
+        .draggable(model.transferItem(for: frame))
     }
 }

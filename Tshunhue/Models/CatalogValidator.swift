@@ -93,6 +93,8 @@ struct CatalogValidator: Sendable {
             try validateProviders(subsection.providers ?? [])
         }
         let subsectionsByID = Dictionary(uniqueKeysWithValues: subsections.map { ($0.id, $0) })
+        let subsectionOrderByID = Dictionary(uniqueKeysWithValues: subsections.enumerated().map { ($0.element.id, $0.offset) })
+        let categoryOrder = source.categories.firstIndex { $0.descriptor.id == category.id } ?? 0
 
         let reportURL = try source.index.report.map {
             let url = URL(string: $0)!
@@ -140,6 +142,8 @@ struct CatalogValidator: Sendable {
                 providers: providers,
                 attribution: category.attribution,
                 reportURL: reportURL,
+                categoryOrder: categoryOrder,
+                subsectionOrder: frame.subsection.flatMap { subsectionOrderByID[$0] },
                 order: order
             ))
         }

@@ -193,6 +193,61 @@ struct CategoryKey: Hashable, Codable, Sendable {
     let categoryID: String
 }
 
+enum CatalogScope: Hashable, Sendable {
+    case recents
+    case all
+    case index(URL)
+    case category(CategoryKey)
+}
+
+enum CatalogScopeResolver {
+    static func categoryFilter(for scope: CatalogScope, in sources: [SourceSummary]) -> Set<CategoryKey> {
+        switch scope {
+        case .recents, .all:
+            return []
+        case .index(let sourceURL):
+            guard let source = sources.first(where: { $0.sourceURL == sourceURL }) else { return [] }
+            return Set(source.enabledCategoryIDs.map {
+                CategoryKey(sourceURL: sourceURL, categoryID: $0)
+            })
+        case .category(let key):
+            return [key]
+        }
+    }
+
+    static func frames(
+        for scope: CatalogScope,
+        in allFrames: [CatalogFrame],
+        recentIdentities: [FrameIdentity]
+    ) -> [CatalogFrame] {
+        switch scope {
+        case .recents:
+            return recentIdentities.compactMap { identity in
+                allFrames.first { $0.identity == identity }
+            }
+        case .all:
+            return allFrames
+        case .index(let sourceURL):
+            return allFrames.filter { $0.identity.sourceURL == sourceURL }
+        case .category(let key):
+            return allFrames.filter { $0.categoryKey == key }
+        }
+    }
+
+    static func isValid(_ scope: CatalogScope, in sources: [SourceSummary]) -> Bool {
+        switch scope {
+        case .recents, .all:
+            return true
+        case .index(let sourceURL):
+            guard let source = sources.first(where: { $0.sourceURL == sourceURL }) else { return false }
+            return !source.enabledCategoryIDs.isEmpty
+        case .category(let key):
+            guard let source = sources.first(where: { $0.sourceURL == key.sourceURL }) else { return false }
+            return source.enabledCategoryIDs.contains(key.categoryID)
+        }
+    }
+}
+
 struct CatalogFrame: Identifiable, Hashable, Sendable {
     let identity: FrameIdentity
     let sourceName: String
@@ -206,11 +261,91 @@ struct CatalogFrame: Identifiable, Hashable, Sendable {
     let providers: [Provider]
     let attribution: Attribution?
     let reportURL: URL?
+    let categoryOrder: Int
+    let subsectionOrder: Int?
     let order: Int
 
     var id: FrameIdentity { identity }
     var tags: [String] { frame.tags ?? [] }
     var categoryKey: CategoryKey { CategoryKey(sourceURL: identity.sourceURL, categoryID: categoryID) }
+}
+
+struct FrameSection: Identifiable, Sendable {
+    enum ID: Hashable, Sendable {
+        case category(CategoryKey)
+        case subsection(CategoryKey, String?)
+    }
+
+    let id: ID
+    let title: String
+    let subtitle: String?
+    let frames: [CatalogFrame]
+}
+
+enum FrameSectionBuilder {
+    static func sections(
+        from frames: [CatalogFrame],
+        scope: CatalogScope,
+        sources: [SourceSummary]
+    ) -> [FrameSection] {
+        if case .category(let categoryKey) = scope {
+            return subsectionSections(from: frames, categoryKey: categoryKey)
+        }
+        return categorySections(from: frames, sources: sources)
+    }
+
+    private static func categorySections(
+        from frames: [CatalogFrame],
+        sources: [SourceSummary]
+    ) -> [FrameSection] {
+        let sourceOrder = Dictionary(uniqueKeysWithValues: sources.enumerated().map { ($0.element.sourceURL, $0.offset) })
+        let grouped = Dictionary(grouping: frames, by: \.categoryKey)
+        let ordered: [(sourceOrder: Int, categoryOrder: Int, title: String, section: FrameSection)] = grouped.compactMap { key, sectionFrames in
+            guard let first = sectionFrames.first else { return nil }
+            return (
+                sourceOrder[key.sourceURL] ?? .max,
+                first.categoryOrder,
+                first.categoryName,
+                FrameSection(
+                    id: .category(key),
+                    title: first.categoryName,
+                    subtitle: first.sourceName,
+                    frames: sectionFrames
+                )
+            )
+        }
+        return ordered.sorted { lhs, rhs in
+            if lhs.0 != rhs.0 { return lhs.0 < rhs.0 }
+            if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
+            return lhs.2 < rhs.2
+        }
+        .map(\.section)
+    }
+
+    private static func subsectionSections(
+        from frames: [CatalogFrame],
+        categoryKey: CategoryKey
+    ) -> [FrameSection] {
+        let grouped = Dictionary(grouping: frames) { $0.subsection?.id }
+        let ordered: [(subsectionOrder: Int, title: String, section: FrameSection)] = grouped.compactMap { subsectionID, sectionFrames in
+            guard let first = sectionFrames.first else { return nil }
+            return (
+                first.subsectionOrder ?? .max,
+                first.subsection?.name ?? String(localized: "No Subsection"),
+                FrameSection(
+                    id: .subsection(categoryKey, subsectionID),
+                    title: first.subsection?.name ?? String(localized: "No Subsection"),
+                    subtitle: nil,
+                    frames: sectionFrames
+                )
+            )
+        }
+        return ordered.sorted { lhs, rhs in
+            if lhs.0 != rhs.0 { return lhs.0 < rhs.0 }
+            return lhs.1 < rhs.1
+        }
+        .map(\.section)
+    }
 }
 
 struct ValidatedIndex: Sendable {

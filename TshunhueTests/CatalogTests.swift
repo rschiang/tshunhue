@@ -1,5 +1,7 @@
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import Tshunhue
 
 struct CatalogTests {
@@ -321,7 +323,165 @@ struct SearchIndexTests {
             providers: [],
             attribution: nil,
             reportURL: nil,
+            categoryOrder: 0,
+            subsectionOrder: nil,
             order: id == "a" ? 0 : 1
+        )
+    }
+}
+
+struct CatalogBrowsingTests {
+    @Test func resolvesSingleScopesAndRecentOrdering() {
+        let firstURL = URL(string: "https://one.example/index.json")!
+        let secondURL = URL(string: "https://two.example/index.json")!
+        let firstSource = makeSource(url: firstURL, name: "First", categoryIDs: ["a", "b"], enabled: ["a", "b"])
+        let secondSource = makeSource(url: secondURL, name: "Second", categoryIDs: ["a"], enabled: ["a"])
+        let frames = [
+            makeFrame(sourceURL: firstURL, sourceName: "First", categoryID: "a", categoryName: "A", id: "1"),
+            makeFrame(sourceURL: firstURL, sourceName: "First", categoryID: "b", categoryName: "B", id: "2"),
+            makeFrame(sourceURL: secondURL, sourceName: "Second", categoryID: "a", categoryName: "A", id: "3"),
+        ]
+
+        let indexFilter = CatalogScopeResolver.categoryFilter(for: .index(firstURL), in: [firstSource, secondSource])
+        #expect(indexFilter == [
+            CategoryKey(sourceURL: firstURL, categoryID: "a"),
+            CategoryKey(sourceURL: firstURL, categoryID: "b"),
+        ])
+        #expect(CatalogScopeResolver.categoryFilter(for: .recents, in: [firstSource, secondSource]).isEmpty)
+
+        let categoryFrames = CatalogScopeResolver.frames(
+            for: .category(CategoryKey(sourceURL: firstURL, categoryID: "b")),
+            in: frames,
+            recentIdentities: []
+        )
+        #expect(categoryFrames.map(\.effectiveID) == ["2"])
+
+        let recentFrames = CatalogScopeResolver.frames(
+            for: .recents,
+            in: frames,
+            recentIdentities: [frames[2].identity, frames[0].identity]
+        )
+        #expect(recentFrames.map(\.effectiveID) == ["3", "1"])
+        #expect(CatalogScopeResolver.isValid(.index(firstURL), in: [firstSource, secondSource]))
+        #expect(!CatalogScopeResolver.isValid(.index(URL(string: "https://missing.example/index.json")!), in: [firstSource, secondSource]))
+    }
+
+    @Test func groupsByCatalogOrderAndPreservesFrameOrderWithinSections() throws {
+        let firstURL = URL(string: "https://one.example/index.json")!
+        let secondURL = URL(string: "https://two.example/index.json")!
+        let firstSource = makeSource(url: firstURL, name: "First", categoryIDs: ["first"], enabled: ["first"])
+        let secondSource = makeSource(url: secondURL, name: "Second", categoryIDs: ["second"], enabled: ["second"])
+        let firstFrame = makeFrame(
+            sourceURL: firstURL,
+            sourceName: "First",
+            categoryID: "first",
+            categoryName: "Same Name",
+            id: "1"
+        )
+        let secondFrame = makeFrame(
+            sourceURL: secondURL,
+            sourceName: "Second",
+            categoryID: "second",
+            categoryName: "Same Name",
+            id: "2"
+        )
+
+        let categorySections = FrameSectionBuilder.sections(
+            from: [firstFrame, secondFrame],
+            scope: .all,
+            sources: [secondSource, firstSource]
+        )
+        #expect(categorySections.map(\.subtitle) == ["Second", "First"])
+
+        let categoryKey = CategoryKey(sourceURL: firstURL, categoryID: "first")
+        let episodeOne = Subsection(id: "ep1", name: "Episode 1", providers: nil)
+        let episodeTwo = Subsection(id: "ep2", name: "Episode 2", providers: nil)
+        let episodeTwoFirst = makeFrame(
+            sourceURL: firstURL,
+            sourceName: "First",
+            categoryID: "first",
+            categoryName: "Show",
+            id: "ep2-b",
+            subsection: episodeTwo,
+            subsectionOrder: 1
+        )
+        let episodeOneFrame = makeFrame(
+            sourceURL: firstURL,
+            sourceName: "First",
+            categoryID: "first",
+            categoryName: "Show",
+            id: "ep1",
+            subsection: episodeOne,
+            subsectionOrder: 0
+        )
+        let episodeTwoSecond = makeFrame(
+            sourceURL: firstURL,
+            sourceName: "First",
+            categoryID: "first",
+            categoryName: "Show",
+            id: "ep2-a",
+            subsection: episodeTwo,
+            subsectionOrder: 1
+        )
+        let ungrouped = makeFrame(
+            sourceURL: firstURL,
+            sourceName: "First",
+            categoryID: "first",
+            categoryName: "Show",
+            id: "none"
+        )
+        let subsectionSections = FrameSectionBuilder.sections(
+            from: [episodeTwoFirst, episodeOneFrame, episodeTwoSecond, ungrouped],
+            scope: .category(categoryKey),
+            sources: [firstSource]
+        )
+        #expect(subsectionSections.map(\.title) == ["Episode 1", "Episode 2", "No Subsection"])
+        #expect(subsectionSections[1].frames.map(\.effectiveID) == ["ep2-b", "ep2-a"])
+    }
+
+    private func makeSource(
+        url: URL,
+        name: String,
+        categoryIDs: [String],
+        enabled: Set<String>
+    ) -> SourceSummary {
+        SourceSummary(
+            id: UUID(),
+            sourceURL: url,
+            name: name,
+            isDefault: false,
+            categories: categoryIDs.map { CategoryDescriptor(id: $0, name: $0, language: nil, url: "\($0).json", frames: nil) },
+            enabledCategoryIDs: enabled,
+            lastSuccessfulRefresh: nil,
+            refreshError: nil
+        )
+    }
+
+    private func makeFrame(
+        sourceURL: URL,
+        sourceName: String,
+        categoryID: String,
+        categoryName: String,
+        id: String,
+        subsection: Subsection? = nil,
+        subsectionOrder: Int? = nil
+    ) -> CatalogFrame {
+        CatalogFrame(
+            identity: FrameIdentity(sourceURL: sourceURL, categoryID: categoryID, frameID: id),
+            sourceName: sourceName,
+            categoryID: categoryID,
+            categoryName: categoryName,
+            language: "en",
+            subsection: subsection,
+            frame: Frame(id: id, url: "\(id).png", caption: id, tags: nil, subsection: subsection?.id, timecode: nil),
+            effectiveID: id,
+            imageURL: sourceURL.appendingPathComponent("\(id).png"),
+            providers: [],
+            attribution: nil,
+            reportURL: nil,
+            categoryOrder: 0,
+            subsectionOrder: subsectionOrder,
+            order: 0
         )
     }
 }
@@ -398,6 +558,171 @@ struct ImageRepositoryTests {
 
         #expect(await repository.cacheSize() == 0)
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+    }
+
+    @Test func jpegSourcesArePreservedByteForByte() throws {
+        let png = try makeImageData(type: .png, width: 1, height: 1, color: CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        let jpeg = try JPEGEncoder.data(for: imageAsset(data: png, type: .png, width: 1, height: 1))
+        let preserved = try JPEGEncoder.data(for: imageAsset(data: jpeg, type: .jpeg, width: 1, height: 1))
+        #expect(preserved == jpeg)
+    }
+
+    @Test func nonJPEGExportUsesJPEGWhiteMatteAndJPGFilename() throws {
+        let transparentPNG = try makeImageData(
+            type: .png,
+            width: 1,
+            height: 1,
+            color: CGColor(red: 0, green: 0, blue: 0, alpha: 0)
+        )
+        let jpeg = try JPEGEncoder.data(
+            for: imageAsset(data: transparentPNG, type: .png, width: 1, height: 1)
+        )
+        let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        #expect(CGImageSourceGetType(source) as String? == UTType.jpeg.identifier)
+        let pixel = try rgbaPixel(from: jpeg)
+        #expect(pixel[0] > 240)
+        #expect(pixel[1] > 240)
+        #expect(pixel[2] > 240)
+
+        let frame = transferFrame(caption: "Bad / Name")
+        let fileURL = try TransferService.exportJPEGFile(for: frame, data: jpeg)
+        #expect(fileURL.lastPathComponent == "Bad Name.jpg")
+        #expect(try Data(contentsOf: fileURL) == jpeg)
+    }
+
+    @Test func nonJPEGExportAppliesSourceOrientation() throws {
+        let rotatedTIFF = try makeImageData(
+            type: .tiff,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 0, green: 0, blue: 1, alpha: 1),
+            orientation: 6
+        )
+        let jpeg = try JPEGEncoder.data(
+            for: imageAsset(data: rotatedTIFF, type: .tiff, width: 2, height: 1)
+        )
+        let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        #expect(properties[kCGImagePropertyPixelWidth] as? Int == 1)
+        #expect(properties[kCGImagePropertyPixelHeight] as? Int == 2)
+    }
+
+    @Test func failedJPEGPreparationDoesNotRecordRecent() async throws {
+        let imageURL = URL(string: "https://images.example/broken.png")!
+        let client = ScriptedHTTPClient(steps: [
+            .init(url: imageURL, status: 200, data: Data("not an image".utf8)),
+        ])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let repository = ImageRepository(
+            directory: directory.appendingPathComponent("images"),
+            byteBudget: 1_024 * 1_024,
+            client: client
+        )
+        try await repository.load()
+        let recentStore = RecentStore(fileURL: directory.appendingPathComponent("recent.json"))
+        try await recentStore.load()
+        let item = FrameTransferItem(
+            frame: transferFrame(caption: "Broken", imageURL: imageURL),
+            repository: repository,
+            recentStore: recentStore
+        )
+
+        do {
+            _ = try await item.jpegData()
+            Issue.record("Expected invalid image data to fail JPEG preparation")
+        } catch {
+            // Expected: recent recording happens only after preparation succeeds.
+        }
+        #expect(await recentStore.all().isEmpty)
+    }
+
+    private func imageAsset(data: Data, type: UTType, width: Int, height: Int) -> ImageAsset {
+        ImageAsset(
+            data: data,
+            type: type,
+            width: width,
+            height: height,
+            localURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        )
+    }
+
+    private func makeImageData(
+        type: UTType,
+        width: Int,
+        height: Int,
+        color: CGColor,
+        orientation: Int? = nil
+    ) throws -> Data {
+        let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try #require(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(color)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try #require(context.makeImage())
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(
+            data,
+            type.identifier as CFString,
+            1,
+            nil
+        ))
+        var properties: [CFString: Any] = [:]
+        if let orientation { properties[kCGImagePropertyOrientation] = orientation }
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    private func rgbaPixel(from data: Data) throws -> [UInt8] {
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let rendered = pixel.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(
+                data: bytes.baseAddress,
+                width: 1,
+                height: 1,
+                bitsPerComponent: 8,
+                bytesPerRow: 4,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        #expect(rendered)
+        return pixel
+    }
+
+    private func transferFrame(caption: String, imageURL: URL? = nil) -> CatalogFrame {
+        let sourceURL = URL(string: "https://example.com/index.json")!
+        let resolvedImageURL = imageURL ?? sourceURL.appendingPathComponent("frame.png")
+        return CatalogFrame(
+            identity: FrameIdentity(sourceURL: sourceURL, categoryID: "show", frameID: "frame"),
+            sourceName: "Example",
+            categoryID: "show",
+            categoryName: "Show",
+            language: "en",
+            subsection: nil,
+            frame: Frame(id: "frame", url: resolvedImageURL.absoluteString, caption: caption, tags: nil, subsection: nil, timecode: nil),
+            effectiveID: "frame",
+            imageURL: resolvedImageURL,
+            providers: [],
+            attribution: nil,
+            reportURL: nil,
+            categoryOrder: 0,
+            subsectionOrder: nil,
+            order: 0
+        )
     }
 }
 

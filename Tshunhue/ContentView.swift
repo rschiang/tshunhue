@@ -9,12 +9,13 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
+    @AppStorage("groupFrames") private var groupFrames = false
 
     var body: some View {
         #if os(macOS)
-        MacContentView(model: model)
+        MacContentView(model: model, groupFrames: $groupFrames)
         #else
-        IOSContentView(model: model)
+        IOSContentView(model: model, groupFrames: $groupFrames)
         #endif
     }
 }
@@ -22,7 +23,9 @@ struct ContentView: View {
 #if os(macOS)
 private struct MacContentView: View {
     @ObservedObject var model: AppModel
+    @Binding var groupFrames: Bool
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var inspectorPresented = true
     @State private var previewedFrame: CatalogFrame?
     @FocusState private var searchFocused: Bool
 
@@ -30,9 +33,9 @@ private struct MacContentView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             CategorySidebarView(model: model)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
-        } content: {
-            FrameGridView(model: model, previewedFrame: $previewedFrame)
-                .navigationTitle(model.query.isEmpty ? "Recent" : "Results")
+        } detail: {
+            FrameGridView(model: model, previewedFrame: $previewedFrame, groupFrames: groupFrames)
+                .navigationTitle(model.navigationTitle)
                 .searchable(text: $model.query, placement: .toolbar, prompt: "Search captions and tags")
                 .searchFocused($searchFocused)
                 .onKeyPress(.space) {
@@ -40,12 +43,16 @@ private struct MacContentView: View {
                     previewedFrame = frame
                     return .handled
                 }
-        } detail: {
-            if let frame = model.selectedFrame {
-                FrameDetailsView(frame: frame, model: model)
-            } else {
-                ContentUnavailableView("No Selection", systemImage: "sidebar.right")
+        }
+        .inspector(isPresented: $inspectorPresented) {
+            Group {
+                if let frame = model.selectedFrame {
+                    FrameDetailsView(frame: frame, model: model)
+                } else {
+                    ContentUnavailableView("No Selection", systemImage: "sidebar.right")
+                }
             }
+            .inspectorColumnWidth(min: 260, ideal: 320, max: 440)
         }
         .toolbar {
             ToolbarItemGroup {
@@ -58,9 +65,15 @@ private struct MacContentView: View {
                         .keyboardShortcut("c", modifiers: .command)
                     ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
                 }
-                Button("Toggle Inspector", systemImage: "sidebar.right") {
-                    columnVisibility = columnVisibility == .all ? .doubleColumn : .all
+                Button(groupingLabel, systemImage: groupFrames ? "rectangle.3.group.fill" : "rectangle.3.group") {
+                    groupFrames.toggle()
                 }
+                .help(groupingLabel)
+                .accessibilityValue(groupFrames ? "On" : "Off")
+                Button("Toggle Inspector", systemImage: "sidebar.right") {
+                    inspectorPresented.toggle()
+                }
+                .help(inspectorPresented ? "Hide Inspector" : "Show Inspector")
             }
         }
         .overlay(alignment: .top) {
@@ -83,10 +96,15 @@ private struct MacContentView: View {
     private var errorBinding: Binding<Bool> {
         Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
     }
+
+    private var groupingLabel: LocalizedStringKey {
+        model.groupsBySubsection ? "Group by Subsection" : "Group by Category"
+    }
 }
 #else
 private struct IOSContentView: View {
     @ObservedObject var model: AppModel
+    @Binding var groupFrames: Bool
     @State private var previewedFrame: CatalogFrame?
     @State private var detailFrame: CatalogFrame?
     @State private var showingFilters = false
@@ -98,9 +116,10 @@ private struct IOSContentView: View {
             FrameGridView(
                 model: model,
                 previewedFrame: $previewedFrame,
+                groupFrames: groupFrames,
                 onShowDetails: { detailFrame = $0 }
             )
-            .navigationTitle(model.query.isEmpty ? "Recent" : "Results")
+            .navigationTitle(model.navigationTitle)
             .searchable(text: $model.query, prompt: "Search captions and tags")
             .searchFocused($searchFocused)
             .toolbar {
@@ -108,6 +127,10 @@ private struct IOSContentView: View {
                     Button("Filter", systemImage: "line.3.horizontal.decrease.circle") {
                         showingFilters = true
                     }
+                    Button(groupingLabel, systemImage: groupFrames ? "rectangle.3.group.fill" : "rectangle.3.group") {
+                        groupFrames.toggle()
+                    }
+                    .accessibilityValue(groupFrames ? "On" : "Off")
                     Button("Settings", systemImage: "gear") { showingSettings = true }
                 }
             }
@@ -154,6 +177,11 @@ private struct IOSContentView: View {
 
     private var errorBinding: Binding<Bool> {
         Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
+    }
+
+
+    private var groupingLabel: LocalizedStringKey {
+        model.groupsBySubsection ? "Group by Subsection" : "Group by Category"
     }
 }
 #endif

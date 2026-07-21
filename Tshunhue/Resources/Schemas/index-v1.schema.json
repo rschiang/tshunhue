@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tshunhue.example/schema/index-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/rschiang/tshunlitiann/main/schemas/index.schema.json",
   "title": "Tshunhue Index Manifest v1",
   "type": "object",
   "required": ["version", "name", "categories"],

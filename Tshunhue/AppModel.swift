@@ -6,7 +6,15 @@ final class AppModel: ObservableObject {
     @Published var sources: [SourceSummary] = []
     @Published var allFrames: [CatalogFrame] = []
     @Published var displayedFrames: [CatalogFrame] = []
-    @Published var selectedCategories: Set<CategoryKey> = []
+    #if os(macOS)
+    @Published var selectedScope: CatalogScope = .all {
+        didSet { if oldValue != selectedScope { scheduleSearch() } }
+    }
+    #else
+    @Published var selectedScope: CatalogScope = .recents {
+        didSet { if oldValue != selectedScope { scheduleSearch() } }
+    }
+    #endif
     @Published var selectedFrameID: FrameIdentity?
     @Published var query = "" {
         didSet { scheduleSearch() }
@@ -109,7 +117,6 @@ final class AppModel: ObservableObject {
         do {
             try await sourceStore.remove(id: source.id)
             try await recentStore.remove(sourceURL: source.sourceURL)
-            selectedCategories = selectedCategories.filter { $0.sourceURL != source.sourceURL }
             await reloadCatalog()
         } catch {
             errorMessage = error.localizedDescription
@@ -125,7 +132,6 @@ final class AppModel: ObservableObject {
             try await sourceStore.save(updated)
             if !enabled {
                 try await recentStore.remove(categoryID: descriptor.id, sourceURL: source.sourceURL)
-                selectedCategories.remove(CategoryKey(sourceURL: source.sourceURL, categoryID: descriptor.id))
             }
             await reloadCatalog()
         } catch {
@@ -181,20 +187,6 @@ final class AppModel: ObservableObject {
         await reloadCatalog()
     }
 
-    func toggleFilter(_ key: CategoryKey) {
-        if selectedCategories.contains(key) {
-            selectedCategories.remove(key)
-        } else {
-            selectedCategories.insert(key)
-        }
-        scheduleSearch()
-    }
-
-    func showAllCategories() {
-        selectedCategories = []
-        scheduleSearch()
-    }
-
     func copy(_ frame: CatalogFrame) async {
         isWorking = true
         defer { isWorking = false }
@@ -202,22 +194,9 @@ final class AppModel: ObservableObject {
             let asset = try await imageRepository.asset(for: frame.imageURL)
             try TransferService.copy(asset)
             try await recentStore.record(frame.identity)
-            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { await updateDisplayedFrames() }
+            if isShowingRecents { await updateDisplayedFrames() }
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-
-    func transferFile(for frame: CatalogFrame) async -> TransferFile? {
-        do {
-            let asset = try await imageRepository.asset(for: frame.imageURL)
-            let url = try TransferService.exportFile(for: frame, asset: asset)
-            try await recentStore.record(frame.identity)
-            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { await updateDisplayedFrames() }
-            return TransferFile(url: url)
-        } catch {
-            errorMessage = error.localizedDescription
-            return nil
         }
     }
 
@@ -258,6 +237,42 @@ final class AppModel: ObservableObject {
         allFrames.first { $0.identity == selectedFrameID }
     }
 
+    var isShowingRecents: Bool {
+        selectedScope == .recents && !hasSearchQuery
+    }
+
+    var hasSearchQuery: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var groupsBySubsection: Bool {
+        if case .category = selectedScope { return true }
+        return false
+    }
+
+    var frameSections: [FrameSection] {
+        FrameSectionBuilder.sections(from: displayedFrames, scope: selectedScope, sources: sources)
+    }
+
+    var navigationTitle: String {
+        if hasSearchQuery {
+            return String(localized: "Results")
+        }
+        switch selectedScope {
+        case .recents:
+            return String(localized: "Recents")
+        case .all:
+            return String(localized: "All Images")
+        case .index(let sourceURL):
+            return sources.first(where: { $0.sourceURL == sourceURL })?.name ?? String(localized: "Index")
+        case .category(let key):
+            return sources
+                .first(where: { $0.sourceURL == key.sourceURL })?
+                .categories.first(where: { $0.id == key.categoryID })?.name
+                ?? String(localized: "Category")
+        }
+    }
+
     func reportURL(for frame: CatalogFrame) -> URL? {
         guard let base = frame.reportURL,
               var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
@@ -286,6 +301,9 @@ final class AppModel: ObservableObject {
         }
         sources = nextSources
         allFrames = nextFrames
+        if !CatalogScopeResolver.isValid(selectedScope, in: nextSources) {
+            selectedScope = Self.defaultScope
+        }
         if nextSources.isEmpty {
             needsCategorySelection = false
         } else if nextSources.allSatisfy({ $0.enabledCategoryIDs.isEmpty }) {
@@ -320,7 +338,8 @@ final class AppModel: ObservableObject {
     private func scheduleSearch() {
         searchTask?.cancel()
         let query = query
-        let categories = selectedCategories
+        let scope = selectedScope
+        let categories = CatalogScopeResolver.categoryFilter(for: scope, in: sources)
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled, let self else { return }
@@ -328,18 +347,39 @@ final class AppModel: ObservableObject {
                 await self.updateDisplayedFrames()
             } else {
                 let matches = await self.searchIndex.search(query, categoryIDs: categories)
-                guard !Task.isCancelled, self.query == query, self.selectedCategories == categories else { return }
-                self.displayedFrames = matches
+                guard !Task.isCancelled, self.query == query, self.selectedScope == scope else { return }
+                self.applyDisplayedFrames(matches)
             }
         }
     }
 
     private func updateDisplayedFrames() async {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let identities = await recentStore.all()
-            displayedFrames = identities.compactMap { identity in allFrames.first { $0.identity == identity } }
+            let identities = selectedScope == .recents ? await recentStore.all() : []
+            let matches = CatalogScopeResolver.frames(
+                for: selectedScope,
+                in: allFrames,
+                recentIdentities: identities
+            )
+            applyDisplayedFrames(matches)
         } else {
-            displayedFrames = await searchIndex.search(query, categoryIDs: selectedCategories)
+            let categories = CatalogScopeResolver.categoryFilter(for: selectedScope, in: sources)
+            applyDisplayedFrames(await searchIndex.search(query, categoryIDs: categories))
         }
+    }
+
+    private func applyDisplayedFrames(_ frames: [CatalogFrame]) {
+        displayedFrames = frames
+        if let selectedFrameID, !frames.contains(where: { $0.identity == selectedFrameID }) {
+            self.selectedFrameID = nil
+        }
+    }
+
+    private static var defaultScope: CatalogScope {
+        #if os(macOS)
+        .all
+        #else
+        .recents
+        #endif
     }
 }

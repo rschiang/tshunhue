@@ -126,7 +126,8 @@ private final class KeyboardCatalog: ObservableObject {
         }
         do {
             let asset = try await repository.asset(for: frame.imageURL)
-            UIPasteboard.general.setData(asset.data, forPasteboardType: asset.type.identifier)
+            let data = try JPEGEncoder.data(for: asset)
+            UIPasteboard.general.setData(data, forPasteboardType: UTType.jpeg.identifier)
             try await recentStore.record(frame.identity)
             copiedFrameID = frame.identity
         } catch {

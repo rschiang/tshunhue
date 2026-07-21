@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tshunhue.example/schema/category-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/rschiang/tshunlitiann/main/schemas/category.schema.json",
   "title": "Tshunhue Category Manifest v1",
   "type": "object",
   "required": ["version", "id", "name", "language", "frames"],
