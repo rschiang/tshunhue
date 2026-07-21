@@ -19,7 +19,7 @@ struct CategorySidebarView: View {
 
             Section("Indices") {
                 ForEach(model.sources.filter { !$0.enabledCategoryIDs.isEmpty }) { source in
-                    scopeRow(.index(source.sourceURL), title: source.name, systemImage: "books.vertical")
+                    scopeRow(.index(source.sourceURL), title: source.name, systemImage: "movieclapper")
                 }
             }
 
@@ -27,21 +27,8 @@ struct CategorySidebarView: View {
                 ForEach(model.sources) { source in
                     ForEach(source.categories.filter { source.enabledCategoryIDs.contains($0.id) }) { category in
                         let key = CategoryKey(sourceURL: source.sourceURL, categoryID: category.id)
-                        Button {
-                            model.selectedScope = .category(key)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(category.name)
-                                Text(categoryDescription(category, source: source))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(rowBackground(for: .category(key)))
-                        .accessibilityAddTraits(model.selectedScope == .category(key) ? .isSelected : [])
+                        let name = category.name.hasPrefix(source.name) ? String(category.name.dropFirst(source.name.count).trimmingCharacters(in: .whitespaces)) : category.name
+                        scopeRow(.category(key), title: name, systemImage: "film.stack")
                     }
                 }
             }
@@ -72,17 +59,11 @@ struct CategorySidebarView: View {
         RoundedRectangle(cornerRadius: 6)
             .fill(model.selectedScope == scope ? Color.accentColor.opacity(0.18) : Color.clear)
     }
-
-    /// Combines source and language context for a category row.
-    private func categoryDescription(_ category: CategoryDescriptor, source: SourceSummary) -> String {
-        guard let language = category.language else { return source.name }
-        return "\(source.name) · \(language)"
-    }
 }
 
 #if DEBUG
 #Preview("Browse Scopes") {
     CategorySidebarView(model: PreviewData.model())
-        .frame(width: 280, height: 520)
+        .frame(idealWidth: 280, idealHeight: 520)
 }
 #endif

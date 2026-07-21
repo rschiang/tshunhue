@@ -18,7 +18,7 @@ struct FrameGridView: View {
     /// An optional selection callback used to navigate to iOS details.
     var onShowDetails: ((CatalogFrame) -> Void)?
 
-    private let columns = [GridItem(.adaptive(minimum: 220, maximum: 420), spacing: 16)]
+    private let columns = [GridItem(.adaptive(minimum: 160, maximum: 360), spacing: 16)]
 
     var body: some View {
         Group {
@@ -97,30 +97,13 @@ struct FrameGridView: View {
             model.selectedFrameID = frame.identity
             onShowDetails?(frame)
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                FrameThumbnailView(frame: frame, repository: model.imageRepository)
-                    .overlay {
-                        if model.selectedFrameID == frame.identity {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(.tint, lineWidth: 3)
-                        }
-                    }
-                Text(frame.frame.caption)
-                    .font(.headline)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                HStack {
-                    Text(frame.categoryName)
-                    if let subsection = frame.subsection {
-                        Text("·")
-                        Text(subsection.name)
-                    }
+            FrameThumbnailView(frame: frame, repository: model.imageRepository)
+            .overlay {
+                if model.selectedFrameID == frame.identity {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.tint, lineWidth: 3)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
             }
-            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -136,8 +119,7 @@ struct FrameGridView: View {
                 }
             }
         } preview: {
-            FramePreviewView(frame: frame, model: model)
-                .frame(idealWidth: 640, idealHeight: 480)
+            FrameThumbnailView(frame: frame, repository: model.imageRepository, large: true)
         }
         .draggable(model.transferItem(for: frame))
     }
@@ -150,6 +132,6 @@ struct FrameGridView: View {
         previewedFrame: .constant(nil),
         groupFrames: false
     )
-    .frame(width: 700, height: 520)
+    .frame(idealWidth: 700, idealHeight: 520)
 }
 #endif

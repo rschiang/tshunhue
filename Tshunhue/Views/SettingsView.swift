@@ -121,7 +121,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 520, minHeight: 480)
+        .frame(idealWidth: 520, idealHeight: 480)
         .navigationTitle("Settings")
         .sheet(isPresented: $showingAddSource) {
             AddSourceView(model: model)
@@ -161,7 +161,7 @@ private struct PolicyView: View {
                 }
             }
         }
-        .frame(minWidth: 480, minHeight: 320)
+        .frame(idealWidth: 480, idealHeight: 320)
     }
 }
 
@@ -194,7 +194,7 @@ private struct AboutView: View {
                 }
             }
         }
-        .frame(minWidth: 420, minHeight: 300)
+        .frame(idealWidth: 420, idealHeight: 300)
     }
 }
 
@@ -236,7 +236,7 @@ private struct AddSourceView: View {
                 }
             }
         }
-        .frame(minWidth: 440, minHeight: 240)
+        .frame(idealWidth: 440, idealHeight: 240)
     }
 }
 

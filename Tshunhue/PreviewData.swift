@@ -13,10 +13,15 @@ import Foundation
 enum PreviewData {
     /// Creates an isolated app model populated with one representative frame.
     static func model() -> AppModel {
-        let model = AppModel(
-            baseDirectory: FileManager.default.temporaryDirectory
-                .appendingPathComponent("Tshunhue Preview", isDirectory: true)
+        let baseDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Tshunhue Preview", isDirectory: true)
+
+        // Populated preview models skip app startup, so prepare the cache directory here.
+        try? FileManager.default.createDirectory(
+            at: baseDirectory.appendingPathComponent("Image Cache", isDirectory: true),
+            withIntermediateDirectories: true
         )
+        let model = AppModel(baseDirectory: baseDirectory)
         model.sources = [source]
         model.allFrames = [frame]
         model.displayedFrames = [frame]
@@ -57,17 +62,17 @@ enum PreviewData {
         subsection: Subsection(id: "episode-1", name: "Episode 1", providers: nil),
         frame: Frame(
             id: "welcome",
-            url: "https://example.com/welcome.jpg",
-            caption: "Welcome to Tshunhue!",
-            tags: ["welcome", "spring"],
+            url: "https://picsum.photos/640/360",
+            caption: "Why did you do Shades of Spring?",
+            tags: ["Crychic", "Soyo"],
             subsection: "episode-1",
             timecode: try? Timecode(seconds: 42)
         ),
         effectiveID: "welcome",
-        imageURL: URL(string: "https://example.com/welcome.jpg")!,
-        providers: [Provider(name: "Watch", url: "https://example.com/watch?t={seconds}")],
-        attribution: Attribution(text: "Preview artwork", url: "https://example.com"),
-        reportURL: URL(string: "https://example.com/report"),
+        imageURL: URL(string: "https://picsum.photos/640/360")!,
+        providers: [Provider(name: "YouTube", url: "https://youtu.be/dQw4w9WgXcQ?t={seconds}")],
+        attribution: Attribution(text: "Unsplash", url: "https://unsplash.com"),
+        reportURL: URL(string: "https://picsum.photos/"),
         categoryOrder: 0,
         subsectionOrder: 0,
         order: 0

@@ -58,21 +58,23 @@ private struct MacContentView: View {
             .inspectorColumnWidth(min: 260, ideal: 320, max: 440)
         }
         .toolbar {
-            ToolbarItemGroup {
-                Button("Refresh", systemImage: "arrow.clockwise") {
-                    Task { await model.refreshAll() }
-                }
-                .disabled(model.isWorking || model.sources.isEmpty)
-                if let frame = model.selectedFrame {
+            if let frame = model.selectedFrame {
+                ToolbarItem(id: "copy") {
                     Button("Copy", systemImage: "doc.on.doc") { Task { await model.copy(frame) } }
                         .keyboardShortcut("c", modifiers: .command)
+                }
+                
+                ToolbarItem(id: "share") {
                     ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
                 }
+            }
+            ToolbarItemGroup {
                 Button(groupingLabel, systemImage: groupFrames ? "rectangle.3.group.fill" : "rectangle.3.group") {
                     groupFrames.toggle()
                 }
                 .help(groupingLabel)
                 .accessibilityValue(groupFrames ? "On" : "Off")
+
                 Button("Toggle Inspector", systemImage: "sidebar.right") {
                     inspectorPresented.toggle()
                 }
@@ -81,9 +83,6 @@ private struct MacContentView: View {
         }
         .overlay(alignment: .top) {
             if model.isWorking { ProgressView().padding(8) }
-        }
-        .sheet(item: $previewedFrame) { frame in
-            FramePreviewView(frame: frame, model: model)
         }
         .sheet(isPresented: $model.needsCategorySelection) {
             InitialCategoryPickerView(model: model)
@@ -141,9 +140,6 @@ private struct IOSContentView: View {
             .navigationDestination(item: $detailFrame) { frame in
                 FrameDetailsView(frame: frame, model: model)
             }
-        }
-        .sheet(item: $previewedFrame) { frame in
-            FramePreviewView(frame: frame, model: model)
         }
         .sheet(isPresented: $showingFilters) {
             NavigationStack {

@@ -16,62 +16,99 @@ struct FrameDetailsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                FrameThumbnailView(frame: frame, repository: model.imageRepository, large: true)
-                Text(frame.frame.caption)
-                    .font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: 12) {
+                Text("“\(frame.frame.caption)”")
+                    .font(.title.bold())
                     .textSelection(.enabled)
-                LabeledContent("Source", value: frame.sourceName)
-                LabeledContent("Category", value: frame.categoryName)
-                if let subsection = frame.subsection {
-                    LabeledContent("Subsection", value: subsection.name)
-                }
-                if let timecode = frame.frame.timecode {
-                    LabeledContent("Timecode", value: timecode.displayString)
-                }
-                if !frame.tags.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Tags").foregroundStyle(.secondary)
-                        Text(frame.tags.joined(separator: " · "))
-                            .textSelection(.enabled)
+                    .padding(.bottom, -6)
+
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(frame.categoryName)
+                        .accessibilityLabel("Category")
+                    if let subsection = frame.subsection {
+                        Text("·")
+                        Text(subsection.name)
                     }
                 }
-                if let attribution = frame.attribution {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Attribution").foregroundStyle(.secondary)
+                .foregroundStyle(.secondary)
+
+                ZStack(alignment: .bottomLeading) {
+                    FrameThumbnailView(frame: frame, repository: model.imageRepository, large: true)
+
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        if let timecode = frame.frame.timecode {
+                            Text(timecode.displayString)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.white)
+                                .shadow(radius: 2, x: 0, y: 1)
+                        }
+                        Spacer()
+                        if !frame.tags.isEmpty {
+                            ForEach(frame.tags, id: \.self) { tag in
+                                Text(tag)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .shadow(radius: 2, x: 0, y: 1)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.white.opacity(0.25))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                }
+
+                HStack {
+                    Button("Copy", systemImage: "doc.on.doc") {
+                        Task { await model.copy(frame) }
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
+                }
+                .controlSize(.large)
+                .buttonSizing(.flexible)
+                .buttonStyle(.bordered)
+
+                if !frame.providers.isEmpty {
+                    ForEach(Array(frame.providers.enumerated()), id: \.offset) { _, provider in
+                        if let url = provider.destination(for: frame.frame.timecode) {
+                            Link(destination: url) {
+                                Label(provider.name, systemImage: "play.rectangle")
+                            }
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonSizing(.flexible)
+                }
+
+                Divider()
+                    .padding(.vertical, 6)
+
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    if let attribution = frame.attribution {
                         if let url = attribution.url.flatMap(URL.init(string:)) {
-                            Link(attribution.text, destination: url)
+                            Link(destination: url) {
+                                Label(attribution.text, systemImage: "arrow.up.forward.square")
+                            }
+                                .accessibilityLabel("Attribution")
                         } else {
                             Text(attribution.text)
                         }
                     }
-                }
-                if !frame.providers.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Watch").foregroundStyle(.secondary)
-                        ForEach(Array(frame.providers.enumerated()), id: \.offset) { _, provider in
-                            if let url = provider.destination(for: frame.frame.timecode) {
-                                Link(destination: url) {
-                                    Label(provider.name, systemImage: "play.rectangle")
-                                }
-                            }
+                    Spacer()
+                    if let reportURL = model.reportURL(for: frame) {
+                        Link(destination: reportURL) {
+                            Label("Report This Item", systemImage: "exclamationmark.bubble")
+                                .labelStyle(.iconOnly)
+                                .help("Report This Item")
                         }
                     }
                 }
-                Link(destination: frame.imageURL) {
-                    Label("Open Image URL", systemImage: "link")
-                }
-                if let reportURL = model.reportURL(for: frame) {
-                    Link(destination: reportURL) {
-                        Label("Report This Item", systemImage: "exclamationmark.bubble")
-                    }
-                    .foregroundStyle(.secondary)
-                }
-                HStack {
-                    Button("Copy", systemImage: "doc.on.doc") { Task { await model.copy(frame) } }
-                    ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
-                }
-                .buttonStyle(.bordered)
+                .foregroundStyle(.secondary)
+
             }
             .padding()
         }
@@ -82,6 +119,6 @@ struct FrameDetailsView: View {
 #if DEBUG
 #Preview("Frame Details") {
     FrameDetailsView(frame: PreviewData.frame, model: PreviewData.model())
-        .frame(width: 360, height: 640)
+        .frame(idealWidth: 360, idealHeight: 640)
 }
 #endif
