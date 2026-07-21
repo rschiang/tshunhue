@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tshunhue.example/schema/index-v1.schema.json",
+  "title": "Tshunhue Index Manifest v1",
+  "type": "object",
+  "required": ["version", "name", "categories"],
+  "properties": {
+    "version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "homepage": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "contact": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "report": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "url"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "name": { "type": "string", "minLength": 1 },
+          "language": { "type": "string", "minLength": 2 },
+          "url": { "type": "string", "format": "uri-reference", "minLength": 1 },
+          "frames": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "../Schemas/category-v1.schema.json",
+  "version": 1,
+  "id": "spring-flowers-zh-tw",
+  "name": "春花",
+  "language": "zh-Hant-TW",
+  "attribution": {
+    "text": "Public-domain example",
+    "url": "https://example.com/rights"
+  },
+  "providers": [
+    {
+      "name": "Watch",
+      "url": "https://example.com/watch?t={seconds}"
+    }
+  ],
+  "subsections": [
+    { "id": "episode-01", "name": "Episode 1" }
+  ],
+  "frames": [
+    {
+      "url": "images/hello.jpg",
+      "caption": "春天來矣。",
+      "tags": ["春天", "花"],
+      "subsection": "episode-01",
+      "timecode": "01:23.500"
+    }
+  ]
+}

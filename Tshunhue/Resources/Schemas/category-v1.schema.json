@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tshunhue.example/schema/category-v1.schema.json",
+  "title": "Tshunhue Category Manifest v1",
+  "type": "object",
+  "required": ["version", "id", "name", "language", "frames"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": { "$ref": "#/$defs/id" },
+    "name": { "type": "string", "minLength": 1 },
+    "language": { "type": "string", "minLength": 2 },
+    "attribution": { "$ref": "#/$defs/attribution" },
+    "providers": { "type": "array", "items": { "$ref": "#/$defs/provider" } },
+    "subsections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "name": { "type": "string", "minLength": 1 },
+          "providers": { "type": "array", "items": { "$ref": "#/$defs/provider" } }
+        }
+      }
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url", "caption"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "url": { "type": "string", "format": "uri-reference", "minLength": 1 },
+          "caption": { "type": "string", "minLength": 1 },
+          "tags": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "subsection": { "$ref": "#/$defs/id" },
+          "timecode": {
+            "oneOf": [
+              { "type": "number", "minimum": 0 },
+              { "type": "string", "pattern": "^(?:[0-9]+:[0-5][0-9](?:\\.[0-9]{1,3})?|[0-9]+:[0-5][0-9]:[0-5][0-9](?:[.,][0-9]{1,3})?)$" }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "attribution": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "required": ["name", "url"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "pattern": "^https://" }
+      }
+    }
+  }
+}

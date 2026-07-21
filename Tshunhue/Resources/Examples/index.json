@@ -1,0 +1,16 @@
+{
+  "$schema": "../Schemas/index-v1.schema.json",
+  "version": 1,
+  "name": "Tshunhue Example",
+  "homepage": "https://example.com/tshunhue",
+  "report": "https://github.com/example/tshunhue-data/issues/new",
+  "categories": [
+    {
+      "id": "spring-flowers-zh-tw",
+      "name": "春花",
+      "language": "zh-Hant-TW",
+      "url": "category.json",
+      "frames": 1
+    }
+  ]
+}
