@@ -585,6 +585,36 @@ struct ImageRepositoryTests {
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
     }
 
+    @Test func cacheFilenameUsesDetectedImageTypeAndSurvivesReload() async throws {
+        let imageURL = URL(string: "https://images.example/misleading.png")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let repository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: ScriptedHTTPClient(steps: [.init(url: imageURL, status: 200, data: jpeg)])
+        )
+        try await repository.load()
+
+        let downloaded = try await repository.asset(for: imageURL)
+        #expect(downloaded.type.conforms(to: .jpeg))
+        #expect(downloaded.localURL.pathExtension == UTType.jpeg.preferredFilenameExtension)
+        #expect(FileManager.default.fileExists(atPath: downloaded.localURL.path))
+
+        let reloaded = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: ScriptedHTTPClient(steps: [])
+        )
+        try await reloaded.load()
+        #expect(try await reloaded.asset(for: imageURL).localURL == downloaded.localURL)
+    }
+
     @Test func jpegSourcesArePreservedByteForByte() throws {
         let png = try makeImageData(type: .png, width: 1, height: 1, color: CGColor(red: 1, green: 0, blue: 0, alpha: 1))
         let jpeg = try JPEGEncoder.data(for: imageAsset(data: png, type: .png, width: 1, height: 1))

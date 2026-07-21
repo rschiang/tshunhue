@@ -176,6 +176,7 @@
       }
     },
     "Close" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hant-TW" : {
           "stringUnit" : {

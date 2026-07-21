@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import QuickLook
+#endif
 
 /// The adaptive root view for Tshunhue's macOS and iOS experiences.
 struct ContentView: View {
@@ -29,7 +32,7 @@ private struct MacContentView: View {
     @Binding var groupFrames: Bool
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var inspectorPresented = true
-    @State private var previewedFrame: CatalogFrame?
+    @State private var quickLookURL: URL?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -37,15 +40,10 @@ private struct MacContentView: View {
             CategorySidebarView(model: model)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } detail: {
-            FrameGridView(model: model, previewedFrame: $previewedFrame, groupFrames: groupFrames)
+            FrameGridView(model: model, groupFrames: groupFrames, onPreview: showPreview)
                 .navigationTitle(model.navigationTitle)
                 .searchable(text: $model.query, placement: .toolbar, prompt: "Search captions and tags")
                 .searchFocused($searchFocused)
-                .onKeyPress(.space) {
-                    guard let frame = model.selectedFrame else { return .ignored }
-                    previewedFrame = frame
-                    return .handled
-                }
         }
         .inspector(isPresented: $inspectorPresented) {
             Group {
@@ -87,6 +85,7 @@ private struct MacContentView: View {
         .sheet(isPresented: $model.needsCategorySelection) {
             InitialCategoryPickerView(model: model)
         }
+        .quickLookPreview($quickLookURL)
         .onAppear { searchFocused = true }
         .alert("Tshunhue", isPresented: errorBinding) {
             Button("OK") { model.errorMessage = nil }
@@ -102,13 +101,26 @@ private struct MacContentView: View {
     private var groupingLabel: LocalizedStringKey {
         model.groupsBySubsection ? "Group by Subsection" : "Group by Category"
     }
+
+    /// Downloads an image if needed, then presents its cached file with Quick Look.
+    private func showPreview(_ frame: CatalogFrame) {
+        Task {
+            do {
+                let asset = try await model.imageRepository.asset(for: frame.imageURL)
+                quickLookURL = asset.localURL
+            } catch is CancellationError {
+                return
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        }
+    }
 }
 #else
 /// The iOS navigation-based browser and modal settings experience.
 private struct IOSContentView: View {
     @ObservedObject var model: AppModel
     @Binding var groupFrames: Bool
-    @State private var previewedFrame: CatalogFrame?
     @State private var detailFrame: CatalogFrame?
     @State private var showingFilters = false
     @State private var showingSettings = false
@@ -118,9 +130,9 @@ private struct IOSContentView: View {
         NavigationStack {
             FrameGridView(
                 model: model,
-                previewedFrame: $previewedFrame,
                 groupFrames: groupFrames,
-                onShowDetails: { detailFrame = $0 }
+                onShowDetails: { detailFrame = $0 },
+                onPreview: { detailFrame = $0 }
             )
             .navigationTitle(model.navigationTitle)
             .searchable(text: $model.query, prompt: "Search captions and tags")

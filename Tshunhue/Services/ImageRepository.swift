@@ -192,7 +192,7 @@ actor ImageRepository {
     /// Validates and atomically stores downloaded image data.
     private func store(_ data: Data, from url: URL, metadata: HTTPMetadata, key: String) throws -> ImageAsset {
         let properties = try inspect(data)
-        let filename = key + ".image"
+        let filename = key + "." + filenameExtension(for: properties.type, sourceURL: url)
         let fileURL = directory.appendingPathComponent(filename)
         try data.write(to: fileURL, options: .atomic)
         entries[key] = ImageCacheEntry(
@@ -216,6 +216,15 @@ actor ImageRepository {
             height: properties.height,
             localURL: fileURL
         )
+    }
+
+    /// Chooses a useful cache suffix from validated bytes, the source URL, or JPEG as a fallback.
+    private func filenameExtension(for type: UTType, sourceURL: URL) -> String {
+        if let preferredExtension = type.preferredFilenameExtension, !preferredExtension.isEmpty {
+            return preferredExtension.lowercased()
+        }
+        let sourceExtension = sourceURL.pathExtension
+        return sourceExtension.isEmpty ? "jpg" : sourceExtension.lowercased()
     }
 
     /// Recreates an image asset from persisted metadata and bytes.

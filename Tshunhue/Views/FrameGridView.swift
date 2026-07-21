@@ -11,14 +11,17 @@ import SwiftUI
 struct FrameGridView: View {
     /// The model providing visible frames and selection state.
     @ObservedObject var model: AppModel
-    /// The frame currently presented in the larger preview sheet.
-    @Binding var previewedFrame: CatalogFrame?
     /// Whether frames should be divided into category or subsection sections.
     let groupFrames: Bool
     /// An optional selection callback used to navigate to iOS details.
     var onShowDetails: ((CatalogFrame) -> Void)?
+    /// An optional callback for the platform's full preview experience.
+    var onPreview: ((CatalogFrame) -> Void)?
 
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 360), spacing: 16)]
+    #if os(macOS)
+    @FocusState private var gridFocused: Bool
+    #endif
 
     var body: some View {
         Group {
@@ -48,6 +51,16 @@ struct FrameGridView: View {
             }
         }
         .accessibilityIdentifier("frame-grid")
+        #if os(macOS)
+        .focusable()
+        .focused($gridFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.space) {
+            guard let frame = model.selectedFrame, let onPreview else { return .ignored }
+            onPreview(frame)
+            return .handled
+        }
+        #endif
     }
 
     /// The appropriate empty-search or empty-catalog message.
@@ -95,6 +108,9 @@ struct FrameGridView: View {
     private func frameCell(_ frame: CatalogFrame) -> some View {
         Button {
             model.selectedFrameID = frame.identity
+            #if os(macOS)
+            gridFocused = true
+            #endif
             onShowDetails?(frame)
         } label: {
             FrameThumbnailView(frame: frame, repository: model.imageRepository)
@@ -107,7 +123,9 @@ struct FrameGridView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("Preview", systemImage: "eye") { previewedFrame = frame }
+            if let onPreview {
+                Button("Preview", systemImage: "eye") { onPreview(frame) }
+            }
             Button("Copy", systemImage: "doc.on.doc") { Task { await model.copy(frame) } }
             ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption)) {
                 Label("Share", systemImage: "square.and.arrow.up")
@@ -129,7 +147,6 @@ struct FrameGridView: View {
 #Preview("Frame Grid") {
     FrameGridView(
         model: PreviewData.model(),
-        previewedFrame: .constant(nil),
         groupFrames: false
     )
     .frame(idealWidth: 700, idealHeight: 520)
