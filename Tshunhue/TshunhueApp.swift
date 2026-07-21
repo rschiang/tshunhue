@@ -14,19 +14,55 @@ struct TshunhueApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
+        #if os(macOS)
         WindowGroup {
-            ContentView(model: model)
-                .task { await model.start() }
-                .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active else { return }
-                    Task { await model.refreshWhenActive() }
-                }
+            applicationContent
                 .frame(minWidth: 720, minHeight: 520)
         }
-        #if os(macOS)
+        .commands {
+            AboutCommands()
+        }
+
         Settings {
             SettingsView(model: model)
         }
+
+        Window("About Tshunhue", id: AboutCommands.windowID) {
+            AboutView()
+        }
+        .defaultSize(width: 420, height: 300)
+        #else
+        WindowGroup {
+            applicationContent
+        }
         #endif
     }
+
+    /// The shared root content and lifecycle behavior hosted by each platform scene.
+    private var applicationContent: some View {
+        ContentView(model: model)
+            .task { await model.start() }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                Task { await model.refreshWhenActive() }
+            }
+    }
 }
+
+#if os(macOS)
+/// Replaces the standard application-info item with Tshunhue's custom About window.
+private struct AboutCommands: Commands {
+    /// The stable scene identifier used by the About menu command.
+    static let windowID = "about"
+
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Tshunhue") {
+                openWindow(id: Self.windowID)
+            }
+        }
+    }
+}
+#endif

@@ -62,7 +62,9 @@ struct InitialCategoryPickerView: View {
                 }
             }
         }
-        .frame(idealWidth: 520, minHeight: 480)
+        #if os(macOS)
+        .frame(idealWidth: 520, idealHeight: 480)
+        #endif
     }
 }
 
