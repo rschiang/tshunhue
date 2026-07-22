@@ -435,10 +435,10 @@ enum FrameSectionBuilder {
             guard let first = sectionFrames.first else { return nil }
             return (
                 first.subsectionOrder ?? .max,
-                first.subsection?.name ?? String(localized: "No Subsection"),
+                first.subsection?.name ?? String(localized: "None"),
                 FrameSection(
                     id: .subsection(categoryKey, subsectionID),
-                    title: first.subsection?.name ?? String(localized: "No Subsection"),
+                    title: first.subsection?.name ?? String(localized: "None"),
                     subtitle: nil,
                     frames: sectionFrames
                 )

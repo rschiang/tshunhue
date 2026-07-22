@@ -36,5 +36,9 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).KeyboardViewController</string>
 	</dict>
+	<key>NSHumanReadableCopyright</key>
+	<string>© Poren Chiang 2026. Released as free software under the GNU General Public License v3.</string>
+	<key>TshunhueCommitSHA1</key>
+	<string>$(TSHUNHUE_COMMIT)</string>
 </dict>
 </plist>

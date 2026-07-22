@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// A sheet for validating and adding a custom HTTPS index URL.
+/// A navigation-neutral form for validating and adding a custom HTTPS index URL.
 struct AddSourceView: View {
     /// The model used to create the source.
     @ObservedObject var model: AppModel
@@ -15,32 +15,31 @@ struct AddSourceView: View {
     @State private var sourceURL = ""
 
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("URL", text: $sourceURL, prompt: Text("https://example.com/index.json"))
-                    .textContentType(.URL)
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    #endif
-                Text("Only add sources you trust. Images are downloaded only when displayed or transferred.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        Form {
+            TextField("URL", text: $sourceURL)
+                .textContentType(.URL)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                #endif
+            Text("Only add sources you trust. Images are downloaded only when displayed or transferred.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Add Source")
+        .navigationBarBackButtonHidden()
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
             }
-            .formStyle(.grouped)
-            .navigationTitle("Add Source")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        Task {
-                            if await model.addSource(urlString: sourceURL) { dismiss() }
-                        }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Add") {
+                    Task {
+                        if await model.addSource(urlString: sourceURL) { dismiss() }
                     }
-                    .disabled(sourceURL.isEmpty || model.isWorking)
                 }
+                .disabled(sourceURL.isEmpty || model.isWorking)
             }
         }
         #if os(macOS)
@@ -51,6 +50,8 @@ struct AddSourceView: View {
 
 #if DEBUG
 #Preview("Add Source") {
-    AddSourceView(model: PreviewData.model())
+    NavigationStack {
+        AddSourceView(model: PreviewData.model())
+    }
 }
 #endif

@@ -66,7 +66,7 @@ struct FrameDetailsView: View {
                     }
                     .buttonStyle(.borderedProminent)
 
-                    ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
+                    shareButton()
                 }
                 .controlSize(.large)
                 .buttonSizing(.flexible)
@@ -99,20 +99,44 @@ struct FrameDetailsView: View {
                         }
                     }
                     Spacer()
+                    #if os(macOS)
                     if let reportURL = model.reportURL(for: frame) {
-                        Link(destination: reportURL) {
-                            Label("Report This Item", systemImage: "exclamationmark.bubble")
-                                .labelStyle(.iconOnly)
-                                .help("Report This Item")
-                        }
+                        reportButton(url: reportURL)
                     }
+                    #endif
                 }
                 .foregroundStyle(.secondary)
 
             }
             .padding()
+            #if os(iOS)
+            .toolbar {
+                if let reportURL = model.reportURL(for: frame) {
+                    ToolbarItem(placement: .secondaryAction) {
+                        reportButton(url: reportURL)
+                    }
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    shareButton()
+                }
+            }
+            #endif
         }
         .navigationTitle("Details")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func shareButton() -> some View {
+        ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
+    }
+
+    private func reportButton(url: URL) -> some View {
+        Link(destination: url) {
+            Label("Report", systemImage: "exclamationmark.bubble")
+                .labelStyle(.iconOnly)
+                .help("Report This Item")
+        }
     }
 }
 

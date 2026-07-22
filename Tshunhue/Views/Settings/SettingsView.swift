@@ -7,12 +7,19 @@
 
 import SwiftUI
 
+#if os(iOS)
+/// Lightweight destinations owned by the iOS Settings sheet navigation stack.
+enum SettingsRoute: Hashable {
+    case addSource
+    case privacyPolicy
+    case about
+}
+#endif
+
 /// The settings entry point shared by the macOS settings scene and iOS sheet.
 struct SettingsView: View {
     /// The model that owns source, refresh, and storage settings.
     @ObservedObject var model: AppModel
-    @State private var showingAbout = false
-
     var body: some View {
         #if os(macOS)
         TabView {
@@ -33,7 +40,7 @@ struct SettingsView: View {
             }
 
             Form {
-                PrivacySettingsView()
+                AboutSettingsView()
             }
             .formStyle(.grouped)
             .tabItem {
@@ -45,20 +52,22 @@ struct SettingsView: View {
         Form {
             SourcesSettingsView(model: model)
             StorageSettingsView(model: model)
-            PrivacySettingsView { showingAbout = true }
+            AboutSettingsView()
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .navigationDestination(isPresented: $showingAbout) {
-            AboutView()
-                .navigationTitle("About Tshunhue")
-        }
         #endif
     }
 }
 
 #if DEBUG
 #Preview("Settings") {
+    #if os(iOS)
+    NavigationStack {
+        SettingsView(model: PreviewData.model())
+    }
+    #else
     SettingsView(model: PreviewData.model())
+    #endif
 }
 #endif

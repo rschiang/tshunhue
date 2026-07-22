@@ -11,10 +11,16 @@ import SwiftUI
 struct CategorySidebarView: View {
     /// The application model whose selected scope this view controls.
     @ObservedObject var model: AppModel
+    /// Whether this presentation includes the dedicated recent-items scope.
+    var includesRecents = true
+    /// Called after a scope is selected, such as to pop an iOS picker destination.
+    var onSelect: (() -> Void)? = nil
 
     var body: some View {
         List {
-            scopeRow(.recents, title: String(localized: "Recents"), systemImage: "clock")
+            if includesRecents {
+                scopeRow(.recents, title: String(localized: "Recents"), systemImage: "clock")
+            }
             scopeRow(.all, title: String(localized: "All"), systemImage: "square.grid.2x2")
 
             Section("Indices") {
@@ -40,6 +46,7 @@ struct CategorySidebarView: View {
     private func scopeRow(_ scope: CatalogScope, title: String, systemImage: String) -> some View {
         Button {
             model.selectedScope = scope
+            onSelect?()
         } label: {
             Label {
                 Text(title)

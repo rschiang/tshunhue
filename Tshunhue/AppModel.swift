@@ -19,12 +19,14 @@ final class AppModel: ObservableObject {
     @Published var allFrames: [CatalogFrame] = []
     /// Frames matching the current scope and search query.
     @Published var displayedFrames: [CatalogFrame] = []
+    /// Resolved recent frames in newest-first order for the iOS Recents tab.
+    @Published private(set) var recentFrames: [CatalogFrame] = []
     #if os(macOS)
     @Published var selectedScope: CatalogScope = .all {
         didSet { if oldValue != selectedScope { scheduleSearch() } }
     }
     #else
-    @Published var selectedScope: CatalogScope = .recents {
+    @Published var selectedScope: CatalogScope = .all {
         didSet { if oldValue != selectedScope { scheduleSearch() } }
     }
     #endif
@@ -42,6 +44,8 @@ final class AppModel: ObservableObject {
     @Published var cacheByteCount = 0
     /// Controls presentation of the first-run category picker.
     @Published var needsCategorySelection = false
+    /// Indicates that persisted sources and recents are ready for initial UI routing.
+    @Published private(set) var didFinishInitialLoad = false
     /// The interval used for automatic source refreshes.
     @Published var refreshFrequency: RefreshFrequency {
         didSet { UserDefaults.standard.set(refreshFrequency.rawValue, forKey: Self.refreshKey) }
@@ -54,6 +58,8 @@ final class AppModel: ObservableObject {
     /// The shared image loader and cache used by app views and transfers.
     let imageRepository: ImageRepository
     private var searchTask: Task<Void, Never>?
+    /// Desired category values awaiting download, validation, and persistence.
+    @Published private var pendingCategorySelections: [CategoryKey: Bool] = [:]
 
     private static let refreshKey = "refreshFrequency"
     /// The app-group identifier shared with the optional keyboard extension.
@@ -102,13 +108,19 @@ final class AppModel: ObservableObject {
     func start() async {
         guard sources.isEmpty && allFrames.isEmpty else { return }
         isWorking = true
-        defer { isWorking = false }
+        defer {
+            isWorking = false
+            didFinishInitialLoad = true
+        }
         do {
             try await sourceStore.load()
             try await recentStore.load()
             try await imageRepository.load()
             await restoreDefaultSources()
             await reloadCatalog()
+            needsCategorySelection = !sources.isEmpty
+                && sources.allSatisfy { $0.enabledCategoryIDs.isEmpty }
+            await refreshCacheSize()
             await refreshIfNeeded()
         } catch {
             errorMessage = error.localizedDescription
@@ -154,9 +166,14 @@ final class AppModel: ObservableObject {
 
     /// Enables or disables a category and downloads or removes its metadata.
     func setCategory(_ descriptor: CategoryDescriptor, in source: SourceSummary, enabled: Bool) async {
-        guard let archive = await sourceStore.archive(id: source.id) else { return }
-        isWorking = true
-        defer { isWorking = false }
+        let key = CategoryKey(sourceURL: source.sourceURL, categoryID: descriptor.id)
+        guard !isUpdatingCategories(in: source),
+              source.enabledCategoryIDs.contains(descriptor.id) != enabled,
+              let archive = await sourceStore.archive(id: source.id) else { return }
+
+        // Reflect intent immediately while preventing conflicting writes to this source.
+        pendingCategorySelections[key] = enabled
+        defer { pendingCategorySelections.removeValue(forKey: key) }
         do {
             let updated = try await syncService.setCategory(descriptor.id, enabled: enabled, in: archive)
             try await sourceStore.save(updated)
@@ -186,7 +203,7 @@ final class AppModel: ObservableObject {
 
     /// Performs a scheduled refresh when the app becomes active.
     func refreshWhenActive() async {
-        guard !isWorking else { return }
+        guard !isWorking, !hasPendingCategoryUpdates else { return }
         await refreshAll(force: false)
     }
 
@@ -231,6 +248,7 @@ final class AppModel: ObservableObject {
             let asset = try await imageRepository.asset(for: frame.imageURL)
             try TransferService.copy(asset)
             try await recentStore.record(frame.identity)
+            await refreshRecentFrames()
             if isShowingRecents { await updateDisplayedFrames() }
         } catch {
             errorMessage = error.localizedDescription
@@ -239,13 +257,20 @@ final class AppModel: ObservableObject {
 
     /// Creates the transferable value used by drag, drop, and share operations.
     func transferItem(for frame: CatalogFrame) -> FrameTransferItem {
-        FrameTransferItem(frame: frame, repository: imageRepository, recentStore: recentStore)
+        FrameTransferItem(
+            frame: frame,
+            repository: imageRepository,
+            recentStore: recentStore
+        ) { [weak self] in
+            await self?.recentStoreDidChange()
+        }
     }
 
     /// Removes one frame from the recent-items list.
     func removeRecent(_ frame: CatalogFrame) async {
         do {
             try await recentStore.remove(frame.identity)
+            await refreshRecentFrames()
             await updateDisplayedFrames()
         } catch {
             errorMessage = error.localizedDescription
@@ -256,6 +281,7 @@ final class AppModel: ObservableObject {
     func clearRecents() async {
         do {
             try await recentStore.clear()
+            await refreshRecentFrames()
             await updateDisplayedFrames()
         } catch {
             errorMessage = error.localizedDescription
@@ -280,6 +306,35 @@ final class AppModel: ObservableObject {
     /// The complete frame represented by `selectedFrameID`, when still available.
     var selectedFrame: CatalogFrame? {
         allFrames.first { $0.identity == selectedFrameID }
+    }
+
+    /// Resolves a lightweight navigation identity against the current catalog.
+    func frame(for identity: FrameIdentity) -> CatalogFrame? {
+        allFrames.first { $0.identity == identity }
+    }
+
+    /// Returns the requested pending value or the source's persisted category value.
+    func isCategoryEnabled(_ descriptor: CategoryDescriptor, in source: SourceSummary) -> Bool {
+        let key = CategoryKey(sourceURL: source.sourceURL, categoryID: descriptor.id)
+        return pendingCategorySelections[key] ?? source.enabledCategoryIDs.contains(descriptor.id)
+    }
+
+    /// Returns whether one category in the source is currently being updated.
+    func isUpdatingCategories(in source: SourceSummary) -> Bool {
+        pendingCategorySelections.keys.contains { $0.sourceURL == source.sourceURL }
+    }
+
+    /// Returns whether this exact category is awaiting persistence.
+    func isUpdatingCategory(_ descriptor: CategoryDescriptor, in source: SourceSummary) -> Bool {
+        pendingCategorySelections[CategoryKey(
+            sourceURL: source.sourceURL,
+            categoryID: descriptor.id
+        )] != nil
+    }
+
+    /// Whether any source has a pending category mutation.
+    var hasPendingCategoryUpdates: Bool {
+        !pendingCategorySelections.isEmpty
     }
 
     /// Whether the unfiltered recent-items scope is currently visible.
@@ -358,13 +413,8 @@ final class AppModel: ObservableObject {
         if !CatalogScopeResolver.isValid(selectedScope, in: nextSources) {
             selectedScope = Self.defaultScope
         }
-        if nextSources.isEmpty {
-            needsCategorySelection = false
-        } else if nextSources.allSatisfy({ $0.enabledCategoryIDs.isEmpty }) {
-            needsCategorySelection = true
-        }
+        await refreshRecentFrames()
         await searchIndex.replace(with: nextFrames)
-        await refreshCacheSize()
         await updateDisplayedFrames()
     }
 
@@ -435,13 +485,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Resolves persisted recent identities against the currently enabled catalog.
+    private func refreshRecentFrames() async {
+        let framesByIdentity = Dictionary(uniqueKeysWithValues: allFrames.map { ($0.identity, $0) })
+        let identities = await recentStore.all()
+        recentFrames = identities.compactMap { framesByIdentity[$0] }
+    }
+
+    /// Publishes recents recorded by share and drag transfers outside direct model commands.
+    private func recentStoreDidChange() async {
+        await refreshRecentFrames()
+        if isShowingRecents { await updateDisplayedFrames() }
+    }
+
     /// The platform-appropriate initial browse scope.
     private static var defaultScope: CatalogScope {
-        #if os(macOS)
         .all
-        #else
-        .recents
-        #endif
     }
 }
     // MARK: - Dependencies

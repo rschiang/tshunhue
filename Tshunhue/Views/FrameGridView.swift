@@ -11,6 +11,12 @@ import SwiftUI
 struct FrameGridView: View {
     /// The model providing visible frames and selection state.
     @ObservedObject var model: AppModel
+    /// Frames rendered by this particular browse or recent root.
+    let frames: [CatalogFrame]
+    /// The scope represented by `frames`.
+    let scope: CatalogScope
+    /// Whether an active query produced this grid's contents.
+    let hasSearchQuery: Bool
     /// Whether frames should be divided into category or subsection sections.
     let groupFrames: Bool
     /// An optional selection callback used to navigate to iOS details.
@@ -25,13 +31,13 @@ struct FrameGridView: View {
 
     var body: some View {
         Group {
-            if model.displayedFrames.isEmpty {
+            if frames.isEmpty {
                 emptyState
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 18) {
                         if groupFrames {
-                            ForEach(model.frameSections) { section in
+                            ForEach(frameSections) { section in
                                 Section {
                                     ForEach(section.frames) { frame in
                                         frameCell(frame)
@@ -41,7 +47,7 @@ struct FrameGridView: View {
                                 }
                             }
                         } else {
-                            ForEach(model.displayedFrames) { frame in
+                            ForEach(frames) { frame in
                                 frameCell(frame)
                             }
                         }
@@ -68,7 +74,7 @@ struct FrameGridView: View {
         ContentUnavailableView {
             Label(
                 emptyTitle,
-                systemImage: model.hasSearchQuery ? "magnifyingglass" : "sparkles.rectangle.stack"
+                systemImage: hasSearchQuery ? "magnifyingglass" : "sparkles.rectangle.stack"
             )
         } description: {
             Text(emptyDescription)
@@ -77,16 +83,26 @@ struct FrameGridView: View {
 
     /// The title for the current empty-grid condition.
     private var emptyTitle: LocalizedStringKey {
-        if model.hasSearchQuery { return "No Results" }
-        if model.isShowingRecents { return "No Recent Images" }
+        if hasSearchQuery { return "No Results" }
+        if isShowingRecents { return "No Recent Images" }
         return "No Images"
     }
 
     /// Supporting guidance for the current empty-grid condition.
     private var emptyDescription: LocalizedStringKey {
-        if model.hasSearchQuery { return "Try fewer words or choose another index or category." }
-        if model.isShowingRecents { return "Images you copy, share, or drag will appear here." }
+        if hasSearchQuery { return "Try fewer words or choose another index or category." }
+        if isShowingRecents { return "Images you copy, share, or drag will appear here." }
         return "Add a source and enable categories in Settings."
+    }
+
+    /// Sections derived for this grid without relying on another tab's scope.
+    private var frameSections: [FrameSection] {
+        FrameSectionBuilder.sections(from: frames, scope: scope, sources: model.sources)
+    }
+
+    /// Whether this grid represents the unfiltered recent-items root.
+    private var isShowingRecents: Bool {
+        scope == .recents && !hasSearchQuery
     }
 
     /// Builds a category or subsection heading for grouped results.
@@ -130,7 +146,7 @@ struct FrameGridView: View {
             ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption)) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
-            if model.isShowingRecents {
+            if isShowingRecents {
                 Divider()
                 Button("Remove from Recents", systemImage: "clock.badge.xmark") {
                     Task { await model.removeRecent(frame) }
@@ -147,6 +163,9 @@ struct FrameGridView: View {
 #Preview("Frame Grid") {
     FrameGridView(
         model: PreviewData.model(),
+        frames: [PreviewData.frame],
+        scope: .all,
+        hasSearchQuery: false,
         groupFrames: false
     )
     .frame(idealWidth: 700, idealHeight: 520)

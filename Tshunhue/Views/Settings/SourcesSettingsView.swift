@@ -11,7 +11,9 @@ import SwiftUI
 struct SourcesSettingsView: View {
     /// The model used to manage sources, categories, and refreshes.
     @ObservedObject var model: AppModel
+    #if os(macOS)
     @State private var showingAddSource = false
+    #endif
 
     var body: some View {
         Group {
@@ -27,30 +29,36 @@ struct SourcesSettingsView: View {
                     DisclosureGroup {
                         ForEach(source.categories) { category in
                             Toggle(isOn: Binding(
-                                get: { source.enabledCategoryIDs.contains(category.id) },
+                                get: { model.isCategoryEnabled(category, in: source) },
                                 set: { enabled in
                                     Task { await model.setCategory(category, in: source, enabled: enabled) }
                                 }
                             )) {
-                                VStack(alignment: .leading) {
-                                    Text(category.name)
-                                    HStack {
-                                        if let language = category.language {
-                                            Text(language)
-                                        }
-                                        if let count = category.frames {
-                                            if category.language == nil {
-                                                Text("\(count) frames")
-                                            } else {
-                                                Text("· \(count) frames")
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(category.name)
+                                        HStack {
+                                            if let language = category.language {
+                                                Text(language)
+                                            }
+                                            if let count = category.frames {
+                                                if category.language == nil {
+                                                    Text("\(count) frames")
+                                                } else {
+                                                    Text("· \(count) frames")
+                                                }
                                             }
                                         }
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     }
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    if model.isUpdatingCategory(category, in: source) {
+                                        Spacer()
+                                        ProgressView()
+                                    }
                                 }
                             }
-                            .disabled(model.isWorking)
+                            .disabled(model.isWorking || model.isUpdatingCategories(in: source))
                         }
                     } label: {
                         VStack(alignment: .leading) {
@@ -79,13 +87,20 @@ struct SourcesSettingsView: View {
                         Button("Remove \(source.name)", systemImage: "trash", role: .destructive) {
                             Task { await model.removeSource(source) }
                         }
+                        .disabled(model.isWorking || model.isUpdatingCategories(in: source))
                     }
                 }
+                #if os(macOS)
                 Button("Add Source", systemImage: "plus") { showingAddSource = true }
+                #else
+                NavigationLink(value: SettingsRoute.addSource) {
+                    Label("Add Source", systemImage: "plus")
+                }
+                #endif
                 Button("Restore Default Sources", systemImage: "arrow.counterclockwise") {
                     Task { await model.restoreBundledSources() }
                 }
-                .disabled(model.isWorking)
+                .disabled(model.isWorking || model.hasPendingCategoryUpdates)
             }
 
             Section("Synchronization") {
@@ -97,12 +112,16 @@ struct SourcesSettingsView: View {
                 Button("Refresh Now", systemImage: "arrow.clockwise") {
                     Task { await model.refreshAll() }
                 }
-                .disabled(model.isWorking || model.sources.isEmpty)
+                .disabled(model.isWorking || model.hasPendingCategoryUpdates || model.sources.isEmpty)
             }
         }
+        #if os(macOS)
         .sheet(isPresented: $showingAddSource) {
-            AddSourceView(model: model)
+            NavigationStack {
+                AddSourceView(model: model)
+            }
         }
+        #endif
     }
 }
 

@@ -23,6 +23,21 @@ struct FrameTransferItem: Transferable, Sendable {
     let repository: ImageRepository
     /// The store updated after transfer preparation succeeds.
     let recentStore: RecentStore
+    /// Notifies observable app state after the recent store changes.
+    let onRecentChange: @Sendable () async -> Void
+
+    /// Creates a transferable frame with an optional recent-state notification.
+    init(
+        frame: CatalogFrame,
+        repository: ImageRepository,
+        recentStore: RecentStore,
+        onRecentChange: @escaping @Sendable () async -> Void = {}
+    ) {
+        self.frame = frame
+        self.repository = repository
+        self.recentStore = recentStore
+        self.onRecentChange = onRecentChange
+    }
 
     /// Downloads the source image and normalizes it to JPEG data.
     func jpegData() async throws -> Data {
@@ -36,11 +51,13 @@ struct FrameTransferItem: Transferable, Sendable {
             let data = try await value.jpegData()
             let url = try TransferService.exportJPEGFile(for: value.frame, data: data)
             try await value.recentStore.record(value.frame.identity)
+            await value.onRecentChange()
             return SentTransferredFile(url)
         }
         DataRepresentation(exportedContentType: .jpeg) { value in
             let data = try await value.jpegData()
             try await value.recentStore.record(value.frame.identity)
+            await value.onRecentChange()
             return data
         }
     }
