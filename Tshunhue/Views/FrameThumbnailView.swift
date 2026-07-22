@@ -29,16 +29,20 @@ struct FrameThumbnailView: View {
                     .scaledToFit()
             } else if let error {
                 VStack(spacing: 8) {
-                    ContentUnavailableView(
-                        "Image Unavailable",
-                        systemImage: "photo.badge.exclamationmark",
-                        description: Text(error)
-                    )
-                    Button("Retry", systemImage: "arrow.clockwise") {
-                        self.error = nil
-                        attempt += 1
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if large {
+                        Button("Retry", systemImage: "arrow.clockwise") {
+                            self.error = nil
+                            attempt += 1
+                        }
+                        .padding(.top, 12)
+                        .buttonStyle(.borderless)
                     }
-                    .buttonStyle(.borderless)
                 }
                 .padding(12)
                 .controlSize(.small)

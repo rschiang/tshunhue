@@ -24,7 +24,15 @@ struct FrameGridView: View {
     /// An optional callback for the platform's full preview experience.
     var onPreview: ((CatalogFrame) -> Void)?
 
-    private let columns = [GridItem(.adaptive(minimum: 160, maximum: 360), spacing: 16)]
+    private static var itemSpacing: CGFloat {
+#if os(macOS)
+        18
+#else
+        12
+#endif
+    }
+
+    private let columns = [GridItem(.adaptive(minimum: 160, maximum: 360), spacing: Self.itemSpacing)]
     #if os(macOS)
     @FocusState private var gridFocused: Bool
     #endif
@@ -35,7 +43,7 @@ struct FrameGridView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 18) {
+                    LazyVGrid(columns: columns, spacing: Self.itemSpacing) {
                         if groupFrames {
                             ForEach(frameSections) { section in
                                 Section {
@@ -143,9 +151,7 @@ struct FrameGridView: View {
                 Button("Preview", systemImage: "eye") { onPreview(frame) }
             }
             Button("Copy", systemImage: "doc.on.doc") { Task { await model.copy(frame) } }
-            ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption)) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
+            FrameShareLink(frame: frame, model: model)
             if isShowingRecents {
                 Divider()
                 Button("Remove from Recents", systemImage: "clock.badge.xmark") {
@@ -168,6 +174,8 @@ struct FrameGridView: View {
         hasSearchQuery: false,
         groupFrames: false
     )
-    .frame(idealWidth: 700, idealHeight: 520)
+    #if os(macOS)
+    .frame(width: 640, height: 480)
+    #endif
 }
 #endif
