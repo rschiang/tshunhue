@@ -38,6 +38,18 @@ private final class ThumbnailBox {
     init(_ image: CGImage) { self.image = image }
 }
 
+/// Identifies a blocking first-download task so late cleanup cannot remove a replacement.
+private struct AssetLoadTask {
+    let id: UUID
+    let task: Task<ImageAsset, Error>
+}
+
+/// Identifies a background refresh so cancellation remains safe across cache clearing.
+private struct ImageRefreshTask {
+    let id: UUID
+    let task: Task<Void, Never>
+}
+
 /// Persisted metadata for one cached image file.
 private struct ImageCacheEntry: Codable, Sendable {
     /// The SHA-256 cache key.
@@ -58,26 +70,43 @@ private struct ImageCacheEntry: Codable, Sendable {
     var metadata: HTTPMetadata
     /// The time the current bytes were downloaded.
     var downloadedAt: Date
+    /// The latest background revalidation attempt, successful or otherwise.
+    var lastRevalidationAttempt: Date?
     /// The time the entry was most recently read.
     var lastAccess: Date
 }
 
 /// An actor-isolated image cache with request coalescing and LRU eviction.
 actor ImageRepository {
+    /// Cached images are reconsidered for refresh at most once per week.
+    private static let revalidationInterval: TimeInterval = 604_800
+    /// Access-only index changes are coalesced away from image delivery.
+    private static let accessPersistenceDelay: UInt64 = 1_000_000_000
+
     private let directory: URL
     private let indexURL: URL
     private let byteBudget: Int
     private let client: any HTTPFetching
+    private let now: @Sendable () -> Date
     private var entries: [String: ImageCacheEntry] = [:]
-    private var inFlight: [URL: Task<ImageAsset, Error>] = [:]
+    private var inFlight: [URL: AssetLoadTask] = [:]
+    private var refreshTasks: [URL: ImageRefreshTask] = [:]
+    private var accessPersistenceTask: Task<Void, Never>?
     private let thumbnails = NSCache<NSString, ThumbnailBox>()
+    private var thumbnailKeysByURL: [URL: Set<NSString>] = [:]
 
     /// Creates a repository rooted at a cache directory with a fixed byte budget.
-    init(directory: URL, byteBudget: Int, client: any HTTPFetching = HTTPClient()) {
+    init(
+        directory: URL,
+        byteBudget: Int,
+        client: any HTTPFetching = HTTPClient(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.directory = directory
         self.indexURL = directory.appendingPathComponent("index.json")
         self.byteBudget = byteBudget
         self.client = client
+        self.now = now
     }
 
     /// Loads the cache index, repairs corruption, and enforces the byte budget.
@@ -96,18 +125,22 @@ actor ImageRepository {
             ) where url.pathExtension == "image" {
                 try? FileManager.default.removeItem(at: url)
             }
-            try persistIndex()
+            try persistIndexNow()
         }
         try discardMissingFiles()
         try evictIfNeeded()
+        try persistIndexNow()
     }
 
     /// Returns a cached or freshly downloaded validated image.
     func asset(for url: URL) async throws -> ImageAsset {
-        if let task = inFlight[url] { return try await task.value }
+        if let request = inFlight[url] { return try await request.task.value }
+        let id = UUID()
         let task = Task { try await self.loadAsset(for: url) }
-        inFlight[url] = task
-        defer { inFlight[url] = nil }
+        inFlight[url] = AssetLoadTask(id: id, task: task)
+        defer {
+            if inFlight[url]?.id == id { inFlight[url] = nil }
+        }
         return try await task.value
     }
 
@@ -127,6 +160,7 @@ actor ImageRepository {
             throw ImageRepositoryError.cannotDecode
         }
         thumbnails.setObject(ThumbnailBox(thumbnail), forKey: thumbnailKey)
+        thumbnailKeysByURL[url, default: []].insert(thumbnailKey)
         return ImageThumbnail(image: thumbnail)
     }
 
@@ -135,52 +169,40 @@ actor ImageRepository {
 
     /// Cancels active loads and removes every cached image.
     func clear() throws {
-        for task in inFlight.values { task.cancel() }
+        for request in inFlight.values { request.task.cancel() }
+        for refresh in refreshTasks.values { refresh.task.cancel() }
+        accessPersistenceTask?.cancel()
         inFlight = [:]
+        refreshTasks = [:]
+        accessPersistenceTask = nil
         for entry in entries.values {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(entry.filename))
         }
         entries = [:]
         thumbnails.removeAllObjects()
-        try persistIndex()
+        thumbnailKeysByURL = [:]
+        try persistIndexNow()
     }
 
     // MARK: - Loading and Validation
 
-    /// Resolves an image from fresh cache, conditional refresh, or a new download.
+    /// Resolves an image from local cache immediately or performs a required first download.
     private func loadAsset(for url: URL) async throws -> ImageAsset {
         let key = cacheKey(for: url)
         if var entry = entries[key] {
             let fileURL = directory.appendingPathComponent(entry.filename)
             if FileManager.default.fileExists(atPath: fileURL.path) {
-                if isFresh(entry) {
-                    entry.lastAccess = Date()
-                    entries[key] = entry
-                    try? persistIndex()
-                    return try read(entry, fileURL: fileURL)
+                let accessDate = now()
+                entry.lastAccess = accessDate
+                entries[key] = entry
+                scheduleAccessPersistence()
+                if shouldRevalidate(entry, at: accessDate) {
+                    scheduleRevalidation(for: url, key: key)
                 }
-                do {
-                    let result = try await client.get(
-                        url,
-                        validators: entry.metadata,
-                        byteLimit: CatalogLimits.imageBytes
-                    )
-                    if result.data == nil {
-                        entry.metadata = merged(result.metadata, fallback: entry.metadata)
-                        entry.lastAccess = Date()
-                        entries[key] = entry
-                        try persistIndex()
-                        return try read(entry, fileURL: fileURL)
-                    }
-                    try Task.checkCancellation()
-                    return try store(result.data!, from: url, metadata: result.metadata, key: key)
-                } catch {
-                    entry.lastAccess = Date()
-                    entries[key] = entry
-                    return try read(entry, fileURL: fileURL)
-                }
+                return try read(entry, fileURL: fileURL)
             }
             entries[key] = nil
+            try persistIndexNow()
         }
 
         let result = try await client.get(url, byteLimit: CatalogLimits.imageBytes)
@@ -189,12 +211,64 @@ actor ImageRepository {
         return try store(data, from: url, metadata: result.metadata, key: key)
     }
 
+    /// Starts one non-blocking conditional refresh for a stale cached image.
+    private func scheduleRevalidation(for url: URL, key: String) {
+        guard refreshTasks[url] == nil else { return }
+        let id = UUID()
+        let task = Task { await self.revalidateCachedAsset(for: url, key: key, taskID: id) }
+        refreshTasks[url] = ImageRefreshTask(id: id, task: task)
+    }
+
+    /// Refreshes cached bytes while preserving the last valid local image on any failure.
+    private func revalidateCachedAsset(for url: URL, key: String, taskID: UUID) async {
+        defer {
+            if refreshTasks[url]?.id == taskID { refreshTasks[url] = nil }
+        }
+        guard let original = entries[key], original.sourceURL == url else { return }
+        let fileURL = directory.appendingPathComponent(original.filename)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        let attemptDate = now()
+
+        do {
+            let result = try await client.get(
+                url,
+                validators: original.metadata,
+                byteLimit: CatalogLimits.imageBytes
+            )
+            try Task.checkCancellation()
+            guard let current = entries[key],
+                  current.filename == original.filename,
+                  current.downloadedAt == original.downloadedAt else { return }
+
+            if let data = result.data {
+                _ = try store(data, from: url, metadata: result.metadata, key: key)
+            } else {
+                var revalidated = current
+                revalidated.metadata = merged(result.metadata, fallback: current.metadata)
+                revalidated.lastRevalidationAttempt = attemptDate
+                entries[key] = revalidated
+                try persistIndexNow()
+            }
+        } catch {
+            guard !Task.isCancelled,
+                  var current = entries[key],
+                  current.filename == original.filename,
+                  current.downloadedAt == original.downloadedAt else { return }
+            // A failed refresh must not cause a network request on every image access.
+            current.lastRevalidationAttempt = attemptDate
+            entries[key] = current
+            try? persistIndexNow()
+        }
+    }
+
     /// Validates and atomically stores downloaded image data.
     private func store(_ data: Data, from url: URL, metadata: HTTPMetadata, key: String) throws -> ImageAsset {
         let properties = try inspect(data)
         let filename = key + "." + filenameExtension(for: properties.type, sourceURL: url)
         let fileURL = directory.appendingPathComponent(filename)
         try data.write(to: fileURL, options: .atomic)
+        let previousFilename = entries[key]?.filename
+        let date = now()
         entries[key] = ImageCacheEntry(
             key: key,
             sourceURL: url,
@@ -204,11 +278,16 @@ actor ImageRepository {
             height: properties.height,
             byteCount: data.count,
             metadata: metadata,
-            downloadedAt: Date(),
-            lastAccess: Date()
+            downloadedAt: date,
+            lastRevalidationAttempt: nil,
+            lastAccess: date
         )
+        if let previousFilename, previousFilename != filename {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(previousFilename))
+        }
+        invalidateThumbnails(for: url)
         try evictIfNeeded(excluding: key)
-        try persistIndex()
+        try persistIndexNow()
         return ImageAsset(
             data: data,
             type: properties.type,
@@ -260,10 +339,10 @@ actor ImageRepository {
 
     // MARK: - Cache Maintenance
 
-    /// Determines freshness from HTTP expiration or the one-week fallback lifetime.
-    private func isFresh(_ entry: ImageCacheEntry) -> Bool {
-        let expiry = entry.metadata.expires ?? entry.downloadedAt.addingTimeInterval(604_800)
-        return expiry > Date()
+    /// Determines whether the local image has reached its weekly refresh checkpoint.
+    private func shouldRevalidate(_ entry: ImageCacheEntry, at date: Date) -> Bool {
+        let checkpoint = entry.lastRevalidationAttempt ?? entry.downloadedAt
+        return date.timeIntervalSince(checkpoint) >= Self.revalidationInterval
     }
 
     /// Fills missing response metadata from a previous cache entry.
@@ -285,7 +364,7 @@ actor ImageRepository {
         entries = entries.filter { _, entry in
             FileManager.default.fileExists(atPath: directory.appendingPathComponent(entry.filename).path)
         }
-        try persistIndex()
+        try persistIndexNow()
     }
 
     /// Evicts least-recently-used images until the byte budget is met.
@@ -293,14 +372,51 @@ actor ImageRepository {
         var total = cacheSize()
         for entry in entries.values.sorted(by: { $0.lastAccess < $1.lastAccess })
         where total > byteBudget && entry.key != protectedKey {
+            refreshTasks[entry.sourceURL]?.task.cancel()
+            refreshTasks[entry.sourceURL] = nil
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(entry.filename))
             entries[entry.key] = nil
+            invalidateThumbnails(for: entry.sourceURL)
             total -= entry.byteCount
         }
     }
 
+    /// Removes every in-memory thumbnail derived from one source image.
+    private func invalidateThumbnails(for url: URL) {
+        for key in thumbnailKeysByURL.removeValue(forKey: url) ?? [] {
+            thumbnails.removeObject(forKey: key)
+        }
+    }
+
+    /// Defers access-only metadata writes so image delivery does not wait for disk I/O.
+    private func scheduleAccessPersistence() {
+        guard accessPersistenceTask == nil else { return }
+        accessPersistenceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.accessPersistenceDelay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.persistAccessChanges()
+        }
+    }
+
+    /// Writes coalesced access timestamps without surfacing cache-maintenance errors.
+    private func persistAccessChanges() {
+        accessPersistenceTask = nil
+        try? writeIndex()
+    }
+
+    /// Cancels a deferred access write and immediately persists structural changes.
+    private func persistIndexNow() throws {
+        accessPersistenceTask?.cancel()
+        accessPersistenceTask = nil
+        try writeIndex()
+    }
+
     /// Atomically writes a deterministic cache-index document.
-    private func persistIndex() throws {
+    private func writeIndex() throws {
         let data = try JSONEncoder().encode(entries.values.sorted { $0.key < $1.key })
         try data.write(to: indexURL, options: .atomic)
     }

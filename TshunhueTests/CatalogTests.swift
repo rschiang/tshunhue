@@ -451,7 +451,7 @@ struct CatalogBrowsingTests {
             scope: .category(categoryKey),
             sources: [firstSource]
         )
-        #expect(subsectionSections.map(\.title) == ["Episode 1", "Episode 2", "No Subsection"])
+        #expect(subsectionSections.map(\.title) == ["Episode 1", "Episode 2", "None"])
         #expect(subsectionSections[1].frames.map(\.effectiveID) == ["ep2-b", "ep2-a"])
     }
 
@@ -615,6 +615,175 @@ struct ImageRepositoryTests {
         #expect(try await reloaded.asset(for: imageURL).localURL == downloaded.localURL)
     }
 
+    @Test func serverExpiryDoesNotOverrideTheWeeklyImagePolicy() async throws {
+        let imageURL = URL(string: "https://images.example/frame.jpg")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let downloadedAt = Date(timeIntervalSinceReferenceDate: 10_000)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let initialRepository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: ScriptedHTTPClient(steps: [
+                .init(url: imageURL, status: 200, data: jpeg, expires: downloadedAt.addingTimeInterval(300)),
+            ]),
+            now: { downloadedAt }
+        )
+        try await initialRepository.load()
+        _ = try await initialRepository.asset(for: imageURL)
+
+        let client = ScriptedHTTPClient(steps: [])
+        let reloaded = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: client,
+            now: { downloadedAt.addingTimeInterval(600) }
+        )
+        try await reloaded.load()
+
+        #expect(try await reloaded.asset(for: imageURL).data == jpeg)
+        await Task.yield()
+        #expect(await client.requests.isEmpty)
+    }
+
+    @Test func staleCacheReturnsBeforeItsCoalescedBackgroundRefresh() async throws {
+        let imageURL = URL(string: "https://images.example/frame.jpg")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let downloadedAt = Date(timeIntervalSinceReferenceDate: 20_000)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let initialRepository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: ScriptedHTTPClient(steps: [
+                .init(url: imageURL, status: 200, data: jpeg, headers: ["ETag": "frame-v1"]),
+            ]),
+            now: { downloadedAt }
+        )
+        try await initialRepository.load()
+        _ = try await initialRepository.asset(for: imageURL)
+
+        let client = GatedHTTPClient()
+        let staleRepository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: client,
+            now: { downloadedAt.addingTimeInterval(604_801) }
+        )
+        try await staleRepository.load()
+
+        // Both reads finish while the conditional request remains deliberately suspended.
+        #expect(try await staleRepository.asset(for: imageURL).data == jpeg)
+        await client.waitForRequest()
+        #expect(try await staleRepository.asset(for: imageURL).data == jpeg)
+        #expect(await client.requests.count == 1)
+        #expect(await client.requests.first?.validators?.etag == "frame-v1")
+
+        await client.complete(status: 304, data: nil, headers: ["ETag": "frame-v1"])
+        let indexURL = directory.appendingPathComponent("index.json")
+        #expect(await waitUntil {
+            guard let data = try? Data(contentsOf: indexURL) else { return false }
+            return String(decoding: data, as: UTF8.self).contains("lastRevalidationAttempt")
+        })
+
+        _ = try await staleRepository.asset(for: imageURL)
+        await Task.yield()
+        #expect(await client.requests.count == 1)
+    }
+
+    @Test func failedBackgroundRefreshKeepsTheLocalImageAndDefersRetry() async throws {
+        let imageURL = URL(string: "https://images.example/frame.jpg")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let downloadedAt = Date(timeIntervalSinceReferenceDate: 25_000)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let initialRepository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: ScriptedHTTPClient(steps: [.init(url: imageURL, status: 200, data: jpeg)]),
+            now: { downloadedAt }
+        )
+        try await initialRepository.load()
+        _ = try await initialRepository.asset(for: imageURL)
+
+        let client = AlwaysFailingHTTPClient()
+        let staleRepository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: client,
+            now: { downloadedAt.addingTimeInterval(604_801) }
+        )
+        try await staleRepository.load()
+        #expect(try await staleRepository.asset(for: imageURL).data == jpeg)
+
+        let indexURL = directory.appendingPathComponent("index.json")
+        #expect(await waitUntil {
+            guard let data = try? Data(contentsOf: indexURL) else { return false }
+            return String(decoding: data, as: UTF8.self).contains("lastRevalidationAttempt")
+        })
+        #expect(await client.requestCount == 1)
+
+        #expect(try await staleRepository.asset(for: imageURL).data == jpeg)
+        await Task.yield()
+        #expect(await client.requestCount == 1)
+    }
+
+    @Test func backgroundReplacementInvalidatesDerivedThumbnails() async throws {
+        let imageURL = URL(string: "https://images.example/frame.jpg")!
+        let firstJPEG = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let replacementJPEG = try makeImageData(
+            type: .jpeg,
+            width: 1,
+            height: 2,
+            color: CGColor(red: 0, green: 0, blue: 1, alpha: 1)
+        )
+        let clock = TestClock(Date(timeIntervalSinceReferenceDate: 30_000))
+        let client = ScriptedHTTPClient(steps: [
+            .init(url: imageURL, status: 200, data: firstJPEG, headers: ["ETag": "frame-v1"]),
+            .init(url: imageURL, status: 200, data: replacementJPEG, headers: ["ETag": "frame-v2"]),
+        ])
+        let repository = ImageRepository(
+            directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+            byteBudget: 1_024 * 1_024,
+            client: client,
+            now: { clock.now }
+        )
+        try await repository.load()
+
+        let original = try await repository.thumbnail(for: imageURL, maxPixelSize: 100)
+        #expect(original.image.width == 2)
+        #expect(original.image.height == 1)
+
+        clock.advance(by: 604_801)
+        _ = try await repository.asset(for: imageURL)
+        #expect(await waitUntil {
+            guard let asset = try? await repository.asset(for: imageURL) else { return false }
+            return asset.width == 1 && asset.height == 2
+        })
+
+        let replacement = try await repository.thumbnail(for: imageURL, maxPixelSize: 100)
+        #expect(replacement.image.width == 1)
+        #expect(replacement.image.height == 2)
+        #expect(await client.requests.count == 2)
+    }
+
     @Test func jpegSourcesArePreservedByteForByte() throws {
         let png = try makeImageData(type: .png, width: 1, height: 1, color: CGColor(red: 1, green: 0, blue: 0, alpha: 1))
         let jpeg = try JPEGEncoder.data(for: imageAsset(data: png, type: .png, width: 1, height: 1))
@@ -662,10 +831,17 @@ struct ImageRepositoryTests {
         #expect(properties[kCGImagePropertyPixelHeight] as? Int == 2)
     }
 
-    @Test func failedJPEGPreparationDoesNotRecordRecent() async throws {
+    @Test func failedJPEGPreparationCanRetryWithoutPrematureRecent() async throws {
         let imageURL = URL(string: "https://images.example/broken.png")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 1,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
         let client = ScriptedHTTPClient(steps: [
             .init(url: imageURL, status: 200, data: Data("not an image".utf8)),
+            .init(url: imageURL, status: 200, data: jpeg),
         ])
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let repository = ImageRepository(
@@ -689,6 +865,60 @@ struct ImageRepositoryTests {
             // Expected: recent recording happens only after preparation succeeds.
         }
         #expect(await recentStore.all().isEmpty)
+
+        #expect(try await item.jpegData() == jpeg)
+        #expect(await waitUntil { await recentStore.all() == [item.frame.identity] })
+        #expect(await client.requests.count == 2)
+    }
+
+    @Test func fileAndDataTransfersSharePreparationAndRecentPublication() async throws {
+        let imageURL = URL(string: "https://images.example/frame.jpg")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let client = ScriptedHTTPClient(steps: [
+            .init(url: imageURL, status: 200, data: jpeg),
+        ])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let imageDirectory = directory.appendingPathComponent("images")
+        let repository = ImageRepository(
+            directory: imageDirectory,
+            byteBudget: 1_024 * 1_024,
+            client: client
+        )
+        try await repository.load()
+        let recentStore = RecentStore(fileURL: directory.appendingPathComponent("recent.json"))
+        try await recentStore.load()
+        let callbackCounter = AsyncCounter()
+        let frame = transferFrame(caption: "Shared", imageURL: imageURL)
+        let item = FrameTransferItem(
+            frame: frame,
+            repository: repository,
+            recentStore: recentStore
+        ) {
+            await callbackCounter.increment()
+        }
+
+        async let exportedData = item.jpegData()
+        async let exportedURL = item.jpegFileURL()
+        let (data, fileURL) = try await (exportedData, exportedURL)
+
+        #expect(data == jpeg)
+        #expect(fileURL.deletingLastPathComponent().standardizedFileURL.path == imageDirectory.standardizedFileURL.path)
+        #expect(try Data(contentsOf: fileURL) == jpeg)
+        #expect(await client.requests.count == 1)
+        #expect(await waitUntil {
+            let recents = await recentStore.all()
+            let callbackCount = await callbackCounter.value
+            return recents == [frame.identity] && callbackCount == 1
+        })
+
+        _ = try await item.jpegData()
+        await Task.yield()
+        #expect(await callbackCounter.value == 1)
     }
 
     // MARK: Fixtures
@@ -794,6 +1024,7 @@ private actor ScriptedHTTPClient: HTTPFetching {
         let url: URL
         let status: Int
         let data: Data?
+        var expires: Date? = nil
         var headers: [String: String] = [:]
     }
 
@@ -829,11 +1060,110 @@ private actor ScriptedHTTPClient: HTTPFetching {
             metadata: HTTPMetadata(
                 etag: step.headers["ETag"],
                 lastModified: step.headers["Last-Modified"],
-                expires: nil
+                expires: step.expires
             ),
             response: response
         )
     }
+}
+
+/// An HTTP client whose single response remains suspended until the test releases it.
+private actor GatedHTTPClient: HTTPFetching {
+    private(set) var requests: [ScriptedHTTPClient.Request] = []
+    private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+    private var responseContinuation: CheckedContinuation<HTTPResult, Error>?
+
+    /// Records a request and waits for an explicit test response.
+    func get(_ url: URL, validators: HTTPMetadata?, byteLimit: Int) async throws -> HTTPResult {
+        requests.append(.init(url: url, validators: validators, byteLimit: byteLimit))
+        for waiter in requestWaiters { waiter.resume() }
+        requestWaiters = []
+        return try await withCheckedThrowingContinuation { continuation in
+            responseContinuation = continuation
+        }
+    }
+
+    /// Suspends until the repository begins its background request.
+    func waitForRequest() async {
+        guard requests.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            requestWaiters.append(continuation)
+        }
+    }
+
+    /// Releases the pending request with a canned HTTP response.
+    func complete(status: Int, data: Data?, headers: [String: String] = [:]) {
+        guard let request = requests.last, let responseContinuation else { return }
+        self.responseContinuation = nil
+        let response = HTTPURLResponse(
+            url: request.url,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: headers
+        )!
+        responseContinuation.resume(returning: HTTPResult(
+            data: data,
+            metadata: HTTPMetadata(
+                etag: headers["ETag"],
+                lastModified: headers["Last-Modified"],
+                expires: nil
+            ),
+            response: response
+        ))
+    }
+}
+
+/// An HTTP client that records attempts and immediately fails them.
+private actor AlwaysFailingHTTPClient: HTTPFetching {
+    private(set) var requestCount = 0
+
+    /// Records the request before returning a representative transport failure.
+    func get(_ url: URL, validators: HTTPMetadata?, byteLimit: Int) async throws -> HTTPResult {
+        requestCount += 1
+        throw HTTPClientError.invalidResponse
+    }
+}
+
+/// A lock-protected clock used to advance cache age without waiting in tests.
+private final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date: Date
+
+    /// Creates a clock at a known instant.
+    init(_ date: Date) {
+        self.date = date
+    }
+
+    /// Returns the current test instant.
+    var now: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return date
+    }
+
+    /// Advances the test instant by a fixed interval.
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        date = date.addingTimeInterval(interval)
+        lock.unlock()
+    }
+}
+
+/// Counts asynchronous callbacks without exposing mutable shared state.
+private actor AsyncCounter {
+    private(set) var value = 0
+
+    /// Increments the counter once.
+    func increment() { value += 1 }
+}
+
+/// Polls a short asynchronous condition used to observe background actor work.
+private func waitUntil(_ condition: @escaping @Sendable () async -> Bool) async -> Bool {
+    for _ in 0..<100 {
+        if await condition() { return true }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    return false
 }
 
 // MARK: - Checked-Out Data

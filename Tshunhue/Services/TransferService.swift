@@ -15,16 +15,126 @@ import AppKit
 import UIKit
 #endif
 
+/// JPEG bytes and an optional cache file that can be exported without another write.
+private struct PreparedJPEG: Sendable {
+    /// JPEG bytes shared by file and data representations.
+    let data: Data
+    /// The existing cache file when the downloaded source was already JPEG.
+    let cachedFileURL: URL?
+}
+
+/// Identifies a shared preparation task so a failed attempt cannot clear a later retry.
+private struct JPEGPreparationTask {
+    let id: UUID
+    let task: Task<PreparedJPEG, Error>
+}
+
+/// Identifies a temporary-file task shared by repeated file representation requests.
+private struct JPEGFileTask {
+    let id: UUID
+    let task: Task<URL, Error>
+}
+
+/// Coalesces transfer work and publishes one non-blocking recent-history update.
+private actor FrameTransferPreparation {
+    private let frame: CatalogFrame
+    private let repository: ImageRepository
+    private let recentStore: RecentStore
+    private let onRecentChange: @Sendable () async -> Void
+    private var preparationTask: JPEGPreparationTask?
+    private var fileTask: JPEGFileTask?
+    private var didPublishRecent = false
+
+    /// Creates shared preparation state for one transferable value.
+    init(
+        frame: CatalogFrame,
+        repository: ImageRepository,
+        recentStore: RecentStore,
+        onRecentChange: @escaping @Sendable () async -> Void
+    ) {
+        self.frame = frame
+        self.repository = repository
+        self.recentStore = recentStore
+        self.onRecentChange = onRecentChange
+    }
+
+    /// Returns coalesced JPEG bytes and records the successful use asynchronously.
+    func jpegData() async throws -> Data {
+        let prepared = try await prepareJPEG()
+        publishRecentOnce()
+        return prepared.data
+    }
+
+    /// Returns an existing JPEG cache file or one coalesced converted temporary file.
+    func jpegFileURL() async throws -> URL {
+        let prepared = try await prepareJPEG()
+        let url = try await prepareFile(for: prepared)
+        publishRecentOnce()
+        return url
+    }
+
+    /// Downloads and converts the image at most once for this transferable value.
+    private func prepareJPEG() async throws -> PreparedJPEG {
+        if let preparationTask { return try await preparationTask.task.value }
+        let id = UUID()
+        let frame = frame
+        let repository = repository
+        let task = Task {
+            let asset = try await repository.asset(for: frame.imageURL)
+            return PreparedJPEG(
+                data: try JPEGEncoder.data(for: asset),
+                cachedFileURL: asset.type.conforms(to: .jpeg) ? asset.localURL : nil
+            )
+        }
+        preparationTask = JPEGPreparationTask(id: id, task: task)
+        do {
+            return try await task.value
+        } catch {
+            if preparationTask?.id == id { preparationTask = nil }
+            throw error
+        }
+    }
+
+    /// Reuses the source JPEG file or writes converted bytes once on demand.
+    private func prepareFile(for prepared: PreparedJPEG) async throws -> URL {
+        if let cachedFileURL = prepared.cachedFileURL { return cachedFileURL }
+        if let fileTask { return try await fileTask.task.value }
+        let id = UUID()
+        let frame = frame
+        let task = Task { try TransferService.exportJPEGFile(for: frame, data: prepared.data) }
+        fileTask = JPEGFileTask(id: id, task: task)
+        do {
+            return try await task.value
+        } catch {
+            if fileTask?.id == id { fileTask = nil }
+            throw error
+        }
+    }
+
+    /// Starts ancillary recent-history work once without delaying the transfer provider.
+    private func publishRecentOnce() {
+        guard !didPublishRecent else { return }
+        didPublishRecent = true
+        let identity = frame.identity
+        let recentStore = recentStore
+        let onRecentChange = onRecentChange
+        Task {
+            do {
+                try await recentStore.record(identity)
+                await onRecentChange()
+            } catch {
+                // Recent history is ancillary and must never make a transfer fail.
+            }
+        }
+    }
+}
+
 /// A lazily prepared JPEG transfer that records successful use in recents.
 struct FrameTransferItem: Transferable, Sendable {
     /// The frame whose image is exported.
     let frame: CatalogFrame
-    /// The repository supplying validated source bytes.
-    let repository: ImageRepository
-    /// The store updated after transfer preparation succeeds.
-    let recentStore: RecentStore
-    /// Notifies observable app state after the recent store changes.
-    let onRecentChange: @Sendable () async -> Void
+    /// Shared state used by every representation requested for this item.
+    private let preparation: FrameTransferPreparation
 
     /// Creates a transferable frame with an optional recent-state notification.
     init(
@@ -34,31 +144,34 @@ struct FrameTransferItem: Transferable, Sendable {
         onRecentChange: @escaping @Sendable () async -> Void = {}
     ) {
         self.frame = frame
-        self.repository = repository
-        self.recentStore = recentStore
-        self.onRecentChange = onRecentChange
+        self.preparation = FrameTransferPreparation(
+            frame: frame,
+            repository: repository,
+            recentStore: recentStore,
+            onRecentChange: onRecentChange
+        )
     }
 
     /// Downloads the source image and normalizes it to JPEG data.
     func jpegData() async throws -> Data {
-        let asset = try await repository.asset(for: frame.imageURL)
-        return try JPEGEncoder.data(for: asset)
+        try await preparation.jpegData()
+    }
+
+    /// Returns a concrete JPEG file, reusing the cached file whenever possible.
+    func jpegFileURL() async throws -> URL {
+        try await preparation.jpegFileURL()
     }
 
     /// Concrete JPEG file and data representations for destination compatibility.
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .jpeg) { value in
-            let data = try await value.jpegData()
-            let url = try TransferService.exportJPEGFile(for: value.frame, data: data)
-            try await value.recentStore.record(value.frame.identity)
-            await value.onRecentChange()
-            return SentTransferredFile(url)
+            SentTransferredFile(try await value.jpegFileURL())
+        }
+        .suggestedFileName { value in
+            TransferService.sanitizedFilename(value.frame.frame.caption) + ".jpg"
         }
         DataRepresentation(exportedContentType: .jpeg) { value in
-            let data = try await value.jpegData()
-            try await value.recentStore.record(value.frame.identity)
-            await value.onRecentChange()
-            return data
+            try await value.jpegData()
         }
     }
 }
