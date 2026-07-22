@@ -38,22 +38,20 @@ private struct MacContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             CategorySidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
         } detail: {
             FrameGridView(model: model, groupFrames: groupFrames, onPreview: showPreview)
                 .navigationTitle(model.navigationTitle)
-                .searchable(text: $model.query, placement: .toolbar, prompt: "Search captions and tags")
+                .searchable(text: $model.query, prompt: "Search captions and tags")
                 .searchFocused($searchFocused)
         }
         .inspector(isPresented: $inspectorPresented) {
             Group {
                 if let frame = model.selectedFrame {
                     FrameDetailsView(frame: frame, model: model)
-                } else {
-                    ContentUnavailableView("No Selection", systemImage: "sidebar.right")
                 }
             }
-            .inspectorColumnWidth(min: 260, ideal: 320, max: 440)
+            .inspectorColumnWidth(min: 240, ideal: 250, max: 320)
         }
         .toolbar {
             if let frame = model.selectedFrame {

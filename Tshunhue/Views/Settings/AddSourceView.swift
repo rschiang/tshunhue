@@ -17,13 +17,13 @@ struct AddSourceView: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("https://example.com/index.json", text: $sourceURL)
+                TextField("URL", text: $sourceURL, prompt: Text("https://example.com/index.json"))
                     .textContentType(.URL)
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     #endif
-                Text("Tshunhue validates default and custom sources using the same rules. Images download only when displayed or transferred.")
+                Text("Only add sources you trust. Images are downloaded only when displayed or transferred.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -44,7 +44,7 @@ struct AddSourceView: View {
             }
         }
         #if os(macOS)
-        .frame(idealWidth: 440, idealHeight: 240)
+        .frame(width: 420, height: 240)
         #endif
     }
 }

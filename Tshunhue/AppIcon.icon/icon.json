@@ -1,0 +1,78 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-gray:0.25000,1.00000"
+  },
+  "groups" : [
+    {
+      "blur-material" : 0.75,
+      "layers" : [
+        {
+          "image-name" : "Pistil.svg",
+          "name" : "Pistil",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.33
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "blur-material" : 0.5,
+      "layers" : [
+        {
+          "blend-mode" : "plus-darker",
+          "image-name" : "Petal4.svg",
+          "name" : "Petal4"
+        },
+        {
+          "blend-mode" : "plus-darker",
+          "image-name" : "Petal5.svg",
+          "name" : "Petal5"
+        },
+        {
+          "blend-mode" : "plus-darker",
+          "image-name" : "Petal3.svg",
+          "name" : "Petal3"
+        },
+        {
+          "blend-mode" : "plus-darker",
+          "image-name" : "Petal2.svg",
+          "name" : "Petal2"
+        },
+        {
+          "blend-mode" : "plus-darker",
+          "image-name" : "Petal1.svg",
+          "name" : "Petal1"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.15
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

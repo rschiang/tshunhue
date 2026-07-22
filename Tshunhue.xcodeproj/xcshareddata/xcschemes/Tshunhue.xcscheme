@@ -6,6 +6,25 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Run Script"
+               scriptText = "TSHUNHUE_COMMIT=$(git -C &quot;$PROJECT_DIR/&quot; rev-parse HEAD)&#10;TSHUNHUE_BUILD=$(git -C &quot;$PROJECT_DIR/&quot; rev-list --count HEAD)&#10;&#10;echo &quot;TSHUNHUE_BUILD=$TSHUNHUE_BUILD\nTSHUNHUE_COMMIT=$TSHUNHUE_COMMIT&quot; &gt; &quot;$PROJECT_DIR/Tshunhue.xcconfig&quot;&#10;"
+               shellToInvoke = "/bin/sh">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "2B335C54300F504E0069B097"
+                     BuildableName = "Tshunhue.app"
+                     BlueprintName = "Tshunhue"
+                     ReferencedContainer = "container:Tshunhue.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
