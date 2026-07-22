@@ -35,7 +35,11 @@ struct AboutView: View {
     /// The compact identity, version, commit, and build-configuration header.
     private var header: some View {
         VStack(spacing: 6) {
-            appIcon
+            Image("AppDisplayIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 96, height: 96)
+                .accessibilityLabel("\(AppInfo.name) app icon")
                 .padding(.bottom, 12)
                 .focusable()
                 .focusEffectDisabled()
@@ -82,26 +86,6 @@ struct AboutView: View {
             }
         }
         .multilineTextAlignment(.center)
-    }
-
-    /// The native application icon or a platform-neutral fallback.
-    @ViewBuilder
-    private var appIcon: some View {
-        if let icon = AppInfo.icon {
-            #if os(macOS)
-            Image(nsImage: icon)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 96, height: 96)
-                .accessibilityLabel("\(AppInfo.name) app icon")
-            #else
-            Image(uiImage: icon)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 96, height: 96)
-                .accessibilityLabel("\(AppInfo.name) app icon")
-            #endif
-        }
     }
 
     // MARK: - License

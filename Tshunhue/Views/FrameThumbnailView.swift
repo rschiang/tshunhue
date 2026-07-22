@@ -40,6 +40,7 @@ struct FrameThumbnailView: View {
                     }
                     .buttonStyle(.borderless)
                 }
+                .padding(12)
                 .controlSize(.small)
             } else {
                 ProgressView()

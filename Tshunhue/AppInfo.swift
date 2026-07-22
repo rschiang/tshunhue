@@ -8,14 +8,8 @@
 import Foundation
 #if os(macOS)
 import AppKit
-
-/// The native image type used for the macOS application icon.
-typealias AppIconImage = NSImage
 #elseif os(iOS)
 import UIKit
-
-/// The native image type used for the iOS application icon.
-typealias AppIconImage = UIImage
 #endif
 
 /// Provides read-only access to app bundle metadata and supporting links.
@@ -73,20 +67,6 @@ enum AppInfo {
     static var commitURL: URL? {
         guard let commit else { return nil }
         return projectURL.appending(path: "commit").appending(path: commit)
-    }
-
-    /// The application icon resolved using the current platform's bundle conventions.
-    static var icon: AppIconImage? {
-        #if os(macOS)
-        NSImage(named: NSImage.applicationIconName)
-        #elseif os(iOS)
-        guard let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
-              let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
-              let filename = (primary["CFBundleIconFiles"] as? [String])?.last else {
-            return nil
-        }
-        return UIImage(named: filename)
-        #endif
     }
 
     /// The bundled license file URL.
