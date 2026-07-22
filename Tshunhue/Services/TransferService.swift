@@ -73,6 +73,11 @@ private actor FrameTransferPreparation {
         return url
     }
 
+    /// Returns JPEG bytes for presentation without recording an outbound transfer.
+    func previewJPEGData() async throws -> Data {
+        try await prepareJPEG().data
+    }
+
     /// Downloads and converts the image at most once for this transferable value.
     private func prepareJPEG() async throws -> PreparedJPEG {
         if let preparationTask { return try await preparationTask.task.value }
@@ -131,6 +136,24 @@ private actor FrameTransferPreparation {
 
 /// A lazily prepared JPEG transfer that records successful use in recents.
 struct FrameTransferItem: Transferable, Sendable {
+    /// A data-only JPEG representation used by the system share preview.
+    struct PreviewImage: Transferable, Sendable {
+        /// Supplies prepared JPEG bytes without exposing the cache file URL.
+        let dataProvider: @Sendable () async throws -> Data
+
+        /// Loads the preview bytes through the shared transfer preparation.
+        func jpegData() async throws -> Data {
+            try await dataProvider()
+        }
+
+        /// Provides concrete JPEG data to the share-sheet preview renderer.
+        static var transferRepresentation: some TransferRepresentation {
+            DataRepresentation(exportedContentType: .jpeg) { preview in
+                try await preview.jpegData()
+            }
+        }
+    }
+
     /// The frame whose image is exported.
     let frame: CatalogFrame
     /// Shared state used by every representation requested for this item.
@@ -160,6 +183,11 @@ struct FrameTransferItem: Transferable, Sendable {
     /// Returns a concrete JPEG file, reusing the cached file whenever possible.
     func jpegFileURL() async throws -> URL {
         try await preparation.jpegFileURL()
+    }
+
+    /// A JPEG preview that shares preparation but not file or recent-history behavior.
+    var previewImage: PreviewImage {
+        PreviewImage { try await preparation.previewJPEGData() }
     }
 
     /// Concrete JPEG file and data representations for destination compatibility.

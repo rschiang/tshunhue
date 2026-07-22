@@ -859,10 +859,10 @@ struct ImageRepositoryTests {
         )
 
         do {
-            _ = try await item.jpegData()
+            _ = try await item.previewImage.jpegData()
             Issue.record("Expected invalid image data to fail JPEG preparation")
         } catch {
-            // Expected: recent recording happens only after preparation succeeds.
+            // Expected: failed preview preparation remains side-effect-free and retryable.
         }
         #expect(await recentStore.all().isEmpty)
 
@@ -901,6 +901,10 @@ struct ImageRepositoryTests {
         ) {
             await callbackCounter.increment()
         }
+
+        #expect(try await item.previewImage.jpegData() == jpeg)
+        #expect(await recentStore.all().isEmpty)
+        #expect(await callbackCounter.value == 0)
 
         async let exportedData = item.jpegData()
         async let exportedURL = item.jpegFileURL()

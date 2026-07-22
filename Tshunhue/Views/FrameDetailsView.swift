@@ -130,7 +130,7 @@ struct FrameDetailsView: View {
     }
 
     private func shareButton() -> some View {
-        ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
+        FrameShareLink(frame: frame, model: model)
     }
 
     private func reportButton(url: URL) -> some View {

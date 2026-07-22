@@ -68,7 +68,7 @@ private struct MacContentView: View {
                 }
                 
                 ToolbarItem(id: "share") {
-                    ShareLink(item: model.transferItem(for: frame), preview: SharePreview(frame.frame.caption))
+                    FrameShareLink(frame: frame, model: model)
                 }
             }
             ToolbarItemGroup {
