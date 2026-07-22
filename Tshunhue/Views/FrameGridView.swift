@@ -169,7 +169,7 @@ struct FrameGridView: View {
 #Preview("Frame Grid") {
     FrameGridView(
         model: PreviewData.model(),
-        frames: [PreviewData.frame],
+        frames: PreviewData.frames,
         scope: .all,
         hasSearchQuery: false,
         groupFrames: false

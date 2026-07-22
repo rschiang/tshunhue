@@ -11,7 +11,7 @@ import Foundation
 /// Deterministic sample state used only by Xcode previews.
 @MainActor
 enum PreviewData {
-    /// Creates an isolated app model populated with one representative frame.
+    /// Creates an isolated app model populated with representative frames.
     static func model() -> AppModel {
         let baseDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("Tshunhue Preview", isDirectory: true)
@@ -23,8 +23,8 @@ enum PreviewData {
         )
         let model = AppModel(baseDirectory: baseDirectory)
         model.sources = [source]
-        model.allFrames = [frame]
-        model.displayedFrames = [frame]
+        model.allFrames = frames
+        model.displayedFrames = frames
         return model
     }
 
@@ -40,7 +40,7 @@ enum PreviewData {
                 name: "Spring Flowers",
                 language: "zh-Hant-TW",
                 url: "category.json",
-                frames: 1
+                frames: 4
             ),
         ],
         enabledCategoryIDs: ["spring-flowers"],
@@ -48,34 +48,98 @@ enum PreviewData {
         refreshError: nil
     )
 
-    /// A representative frame with subsection, tag, attribution, and provider metadata.
-    static let frame = CatalogFrame(
-        identity: FrameIdentity(
-            sourceURL: URL(string: "https://example.com/index.json")!,
-            categoryID: "spring-flowers",
-            frameID: "welcome"
-        ),
-        sourceName: "Tshun-lit-iánn",
-        categoryID: "spring-flowers",
-        categoryName: "Spring Flowers",
-        language: "zh-Hant-TW",
-        subsection: Subsection(id: "episode-1", name: "Episode 1", providers: nil),
-        frame: Frame(
-            id: "welcome",
-            url: "https://picsum.photos/640/360",
+    /// Four representative frames used by grid and root previews.
+    static let frames = [
+        makeFrame(
+            id: "spring",
             caption: "Why did you do Shades of Spring?",
+            seed: "spring",
             tags: ["Crychic", "Soyo"],
-            subsection: "episode-1",
-            timecode: try? Timecode(seconds: 42)
+            subsectionID: "episode-1",
+            subsectionName: "Episode 1",
+            subsectionOrder: 0,
+            order: 0,
+            seconds: 42
         ),
-        effectiveID: "welcome",
-        imageURL: URL(string: "https://picsum.photos/640/360")!,
-        providers: [Provider(name: "YouTube", url: "https://youtu.be/dQw4w9WgXcQ?t={seconds}")],
-        attribution: Attribution(text: "Unsplash", url: "https://unsplash.com"),
-        reportURL: URL(string: "https://picsum.photos/"),
-        categoryOrder: 0,
-        subsectionOrder: 0,
-        order: 0
-    )
+        makeFrame(
+            id: "issho",
+            caption: "Will you form a band with me for life?",
+            seed: "issho",
+            tags: ["Tomorin"],
+            subsectionID: "episode-1",
+            subsectionName: "Episode 1",
+            subsectionOrder: 0,
+            order: 1,
+            seconds: 96
+        ),
+        makeFrame(
+            id: "resurrection",
+            caption: "Now is the time for resurrection.",
+            seed: "resurrection",
+            tags: ["Shouko"],
+            subsectionID: "episode-2",
+            subsectionName: "Episode 2",
+            subsectionOrder: 1,
+            order: 2,
+            seconds: 128
+        ),
+        makeFrame(
+            id: "ordinary",
+            caption: "What is normal and what is ordinary?",
+            seed: "ordinary",
+            tags: ["MyGO"],
+            subsectionID: "episode-2",
+            subsectionName: "Episode 2",
+            subsectionOrder: 1,
+            order: 3,
+            seconds: 180
+        ),
+    ]
+
+    /// The first representative frame used by single-item previews.
+    static let frame = frames[0]
+
+    /// Builds one deterministic frame while keeping repeated preview metadata concise.
+    private static func makeFrame(
+        id: String,
+        caption: String,
+        seed: String,
+        tags: [String],
+        subsectionID: String,
+        subsectionName: String,
+        subsectionOrder: Int,
+        order: Int,
+        seconds: TimeInterval
+    ) -> CatalogFrame {
+        let imageURL = URL(string: "https://picsum.photos/seed/tshunhue-\(seed)/640/360")!
+        return CatalogFrame(
+            identity: FrameIdentity(
+                sourceURL: URL(string: "https://example.com/index.json")!,
+                categoryID: "spring-flowers",
+                frameID: id
+            ),
+            sourceName: "Tshun-lit-iánn",
+            categoryID: "spring-flowers",
+            categoryName: "Spring Flowers",
+            language: "zh-Hant-TW",
+            subsection: Subsection(id: subsectionID, name: subsectionName, providers: nil),
+            frame: Frame(
+                id: id,
+                url: imageURL.absoluteString,
+                caption: caption,
+                tags: tags,
+                subsection: subsectionID,
+                timecode: try? Timecode(seconds: seconds)
+            ),
+            effectiveID: id,
+            imageURL: imageURL,
+            providers: [Provider(name: "YouTube", url: "https://youtu.be/dQw4w9WgXcQ?t={seconds}")],
+            attribution: Attribution(text: "Unsplash", url: "https://unsplash.com"),
+            reportURL: URL(string: "https://picsum.photos/"),
+            categoryOrder: 0,
+            subsectionOrder: subsectionOrder,
+            order: order
+        )
+    }
 }
 #endif
