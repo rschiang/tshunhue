@@ -29,8 +29,15 @@ struct TshunhueApp: App {
 
         Window("About Tshunhue", id: AboutCommands.windowID) {
             AboutView()
+                .windowMinimizeBehavior(.disabled)
+                .windowResizeBehavior(.disabled)
         }
-        .defaultSize(width: 420, height: 300)
+        .commandsRemoved()
+        .windowStyle(.hiddenTitleBar)
+        .windowLevel(.floating)
+        .windowManagerRole(.associated)
+        .windowResizability(.contentSize)
+        .restorationBehavior(.disabled)
         #else
         WindowGroup {
             applicationContent

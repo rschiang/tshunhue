@@ -54,7 +54,9 @@ enum AppInfo {
 
     /// The abbreviated Git commit displayed in About.
     static var shortCommit: String? {
-        commit.map { String($0.prefix(7)) }
+        if let commit {
+            String(commit.prefix(7))
+        } else { nil }
     }
 
     /// The localized copyright notice.
@@ -65,11 +67,11 @@ enum AppInfo {
     // MARK: - Links and Resources
 
     /// The public source repository for Tshunhue.
-    static let projectURL = URL(string: "https://github.com/rschiang/tshunhue")
+    static let projectURL = URL(string: "https://github.com/rschiang/tshunhue")!
 
     /// The repository page for the commit represented by this build.
     static var commitURL: URL? {
-        guard let projectURL, let commit else { return nil }
+        guard let commit else { return nil }
         return projectURL.appending(path: "commit").appending(path: commit)
     }
 

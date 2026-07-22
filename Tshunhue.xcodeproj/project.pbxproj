@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		2BC921CA301053E800B0091C /* LICENSE.md in Resources */ = {isa = PBXBuildFile; fileRef = 2BC921C9301053E800B0091C /* LICENSE.md */; };
-		2BC922783010549400B0091C /* Tshunhue.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 2BC922773010549400B0091C /* Tshunhue.xcconfig */; };
 		2BC922793010549400B0091C /* Tshunhue.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 2BC922773010549400B0091C /* Tshunhue.xcconfig */; };
 		A10000000000000000000003 /* Tshunhue Keyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* Tshunhue Keyboard.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A10000000000000000000021 /* Tshunhue/Models/CatalogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* Tshunhue/Models/CatalogModels.swift */; };
@@ -79,6 +78,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Resources/Examples/category.json,
+				Resources/Examples/index.json,
 			);
 			target = 2B335C54300F504E0069B097 /* Tshunhue */;
 		};
@@ -340,7 +341,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2BC922783010549400B0091C /* Tshunhue.xcconfig in Resources */,
 				2BC921CA301053E800B0091C /* LICENSE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -429,6 +429,7 @@
 /* Begin XCBuildConfiguration section */
 		2B335C74300F50500069B097 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2BC922773010549400B0091C /* Tshunhue.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -491,6 +492,7 @@
 		};
 		2B335C75300F50500069B097 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2BC922773010549400B0091C /* Tshunhue.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
