@@ -28,7 +28,7 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
             .tabItem {
-                Label("Sources", systemImage: "tray.full")
+                Label("Sources", systemImage: "movieclapper")
             }
 
             Form {
@@ -44,7 +44,7 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
             .tabItem {
-                Label("Privacy", systemImage: "hand.raised")
+                Label("Privacy", systemImage: "eyes")
             }
         }
         .frame(idealWidth: 520, idealHeight: 480)

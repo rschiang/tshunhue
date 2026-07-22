@@ -22,26 +22,7 @@ struct InitialCategoryPickerView: View {
             }
             ForEach(model.sources) { source in
                 Section(source.name) {
-                    ForEach(source.categories) { category in
-                        Toggle(isOn: Binding(
-                            get: { model.isCategoryEnabled(category, in: source) },
-                            set: { enabled in
-                                Task { await model.setCategory(category, in: source, enabled: enabled) }
-                            }
-                        )) {
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(category.name)
-                                    categoryDetails(category)
-                                }
-                                if model.isUpdatingCategory(category, in: source) {
-                                    Spacer()
-                                    ProgressView()
-                                }
-                            }
-                        }
-                        .disabled(model.isWorking || model.isUpdatingCategories(in: source))
-                    }
+                    CategorySelectionRows(model: model, source: source)
                 }
             }
         }
@@ -59,24 +40,6 @@ struct InitialCategoryPickerView: View {
         #if os(macOS)
         .frame(idealWidth: 520, idealHeight: 480)
         #endif
-    }
-
-    /// Builds the optional language and frame-count detail line.
-    private func categoryDetails(_ category: CategoryDescriptor) -> some View {
-        HStack {
-            if let language = category.language {
-                Text(language)
-            }
-            if let count = category.frames {
-                if category.language == nil {
-                    Text("\(count) frames")
-                } else {
-                    Text("· \(count) frames")
-                }
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
     }
 
     /// Whether persisted or pending selections contain at least one enabled category.

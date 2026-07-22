@@ -22,44 +22,12 @@ struct SourcesSettingsView: View {
                     ContentUnavailableView(
                         "No Sources",
                         systemImage: "tray",
-                        description: Text("Add an HTTPS index URL to begin.")
+                        description: Text("Add a source index to begin.")
                     )
                 }
                 ForEach(model.sources) { source in
                     DisclosureGroup {
-                        ForEach(source.categories) { category in
-                            Toggle(isOn: Binding(
-                                get: { model.isCategoryEnabled(category, in: source) },
-                                set: { enabled in
-                                    Task { await model.setCategory(category, in: source, enabled: enabled) }
-                                }
-                            )) {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(category.name)
-                                        HStack {
-                                            if let language = category.language {
-                                                Text(language)
-                                            }
-                                            if let count = category.frames {
-                                                if category.language == nil {
-                                                    Text("\(count) frames")
-                                                } else {
-                                                    Text("· \(count) frames")
-                                                }
-                                            }
-                                        }
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    }
-                                    if model.isUpdatingCategory(category, in: source) {
-                                        Spacer()
-                                        ProgressView()
-                                    }
-                                }
-                            }
-                            .disabled(model.isWorking || model.isUpdatingCategories(in: source))
-                        }
+                        CategorySelectionRows(model: model, source: source)
                     } label: {
                         VStack(alignment: .leading) {
                             HStack {

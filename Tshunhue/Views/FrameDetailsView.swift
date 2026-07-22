@@ -124,7 +124,9 @@ struct FrameDetailsView: View {
             #endif
         }
         .navigationTitle("Details")
+        #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     private func shareButton() -> some View {
