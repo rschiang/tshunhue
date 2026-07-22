@@ -25,6 +25,8 @@ Package.resolved
 .build/
 
 # *.xcworkspace
+Tshunhue.xcconfig
 
 # Community catalog checkout (managed as its own repository)
 /data/
+

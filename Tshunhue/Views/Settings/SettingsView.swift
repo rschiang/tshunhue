@@ -49,16 +49,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .sheet(isPresented: $showingAbout) {
-            NavigationStack {
-                AboutView()
-                    .navigationTitle("About Tshunhue")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingAbout = false }
-                        }
-                    }
-            }
+        .navigationDestination(isPresented: $showingAbout) {
+            AboutView()
+                .navigationTitle("About Tshunhue")
         }
         #endif
     }
