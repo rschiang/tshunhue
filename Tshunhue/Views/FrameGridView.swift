@@ -146,6 +146,7 @@ struct FrameGridView: View {
             }
         }
         .buttonStyle(.plain)
+        .contentShape(.contextMenuPreview, .rect(cornerRadius: 12))
         .contextMenu {
             if let onPreview {
                 Button("Preview", systemImage: "eye") { onPreview(frame) }
