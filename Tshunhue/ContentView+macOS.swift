@@ -76,6 +76,7 @@ struct MacContentView: View {
                     model.needsCategorySelection = false
                 }
             }
+            .frame(idealWidth: 520, idealHeight: 480)
         }
         .quickLookPreview($quickLookURL)
         .onAppear { searchFocused = true }

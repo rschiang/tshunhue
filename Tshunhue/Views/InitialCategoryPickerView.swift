@@ -25,6 +25,13 @@ struct InitialCategoryPickerView: View {
                     CategorySelectionRows(model: model, source: source)
                 }
             }
+            Section {
+                NavigationLink {
+                    AddSourceView(model: model)
+                } label: {
+                    Label("Add Source", systemImage: "plus")
+                }
+            }
         }
         .navigationTitle("Choose Categories")
         .toolbar {
@@ -37,9 +44,6 @@ struct InitialCategoryPickerView: View {
                     .disabled(!hasEnabledCategory || model.hasPendingCategoryUpdates)
             }
         }
-        #if os(macOS)
-        .frame(idealWidth: 520, idealHeight: 480)
-        #endif
     }
 
     /// Whether persisted or pending selections contain at least one enabled category.

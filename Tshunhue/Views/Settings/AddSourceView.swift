@@ -42,9 +42,6 @@ struct AddSourceView: View {
                 .disabled(sourceURL.isEmpty || model.isWorking)
             }
         }
-        #if os(macOS)
-        .frame(width: 420, height: 240)
-        #endif
     }
 }
 

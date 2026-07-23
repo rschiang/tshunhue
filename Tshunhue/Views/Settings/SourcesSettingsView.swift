@@ -88,6 +88,7 @@ struct SourcesSettingsView: View {
             NavigationStack {
                 AddSourceView(model: model)
             }
+            .frame(width: 420, height: 240)
         }
         #endif
     }
