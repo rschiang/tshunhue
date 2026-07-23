@@ -35,7 +35,7 @@ struct KeyboardView: View {
 
     /// Displays the host-derived query and the optional category filter.
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             HStack(spacing: 10) {
                 if !model.query.isEmpty {
                     Image(systemName: "magnifyingglass")
@@ -43,14 +43,14 @@ struct KeyboardView: View {
                         .lineLimit(1)
                         .foregroundStyle(.primary)
                 } else {
-                    Image(systemName: "clock")
-                    Text("Recent")
+                    Image(systemName: "character.cursor.ibeam")
+                    Text("Type or Select a Keyword Above")
                 }
                 Spacer()
             }
             .padding(10)
+            .font(.callout)
             .foregroundStyle(.secondary)
-            .background(Capsule().fill(.thinMaterial.opacity(0.15)))
             .font(.body)
             .frame(maxWidth: .infinity, alignment: .leading)
             categoryMenu
@@ -191,7 +191,7 @@ struct KeyboardView: View {
 
     /// Provides the minimal host-text refinement and required keyboard-switch controls.
     private var editingKeys: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             if model.needsInputModeSwitchKey {
                 InputModeSwitchButton(controller: inputModeController)
                     .frame(width: 44, height: 36)
@@ -199,39 +199,28 @@ struct KeyboardView: View {
 
             Button(action: insertSpace) {
                 Image(systemName: "space")
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 16)
                     .foregroundStyle(.secondary.opacity(0))
                     .padding(10)
             }
+            .background(.thickMaterial, in: .rect(cornerRadius: 8))
+            .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
             .accessibilityLabel("Space")
-            .buttonStyle(.glass)
 
             Button(action: deleteBackward) {
                 Image(systemName: "delete.left")
                     .padding(10)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary)
             .accessibilityLabel("Delete")
         }
+        .font(.headline)
     }
 
     /// The currently selected category title used by the compact menu label.
     private var selectedCategoryName: String {
         guard let selectedCategory = model.selectedCategory else { return "All" }
         return model.categories.first(where: { $0.key == selectedCategory })?.name ?? "All"
-    }
-
-    /// Explains the primary result action without treating optional Full Access as an error.
-    private var modeDescription: String {
-        switch model.accessMode {
-        case .text: "Text Mode — tap a caption to insert it."
-        case .images: "Image Mode — tap to copy or hold to preview."
-        }
-    }
-
-    /// The neutral symbol paired with the current access mode.
-    private var modeSymbol: String {
-        model.accessMode == .images ? "photo.on.rectangle" : "text.bubble"
     }
 }
 

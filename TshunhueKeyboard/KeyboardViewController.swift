@@ -21,6 +21,12 @@ final class KeyboardViewController: UIInputViewController {
     private var host: UIHostingController<KeyboardView>?
     /// The current appearance or cleanup task.
     private var lifecycleTask: Task<Void, Never>?
+    /// The primary view height requested from UIKit for the current size class.
+    private var keyboardHeightConstraint: NSLayoutConstraint?
+
+    /// The regular-height and compact-height keyboard dimensions used by this UI.
+    private static let regularKeyboardHeight: CGFloat = 300
+    private static let compactKeyboardHeight: CGFloat = 220
 
     /// Creates the shared model and pins its SwiftUI view to the system keyboard bounds.
     override func viewDidLoad() {
@@ -55,6 +61,25 @@ final class KeyboardViewController: UIInputViewController {
         host.didMove(toParent: self)
         self.model = model
         self.host = host
+    }
+
+    /// Keeps the custom keyboard large enough for its result row and editing keys.
+    override func updateViewConstraints() {
+        super.updateViewConstraints()
+        if let keyboardHeightConstraint {
+            keyboardHeightConstraint.constant = preferredKeyboardHeight
+        } else {
+            let constraint = view.heightAnchor.constraint(equalToConstant: preferredKeyboardHeight)
+            constraint.isActive = true
+            keyboardHeightConstraint = constraint
+        }
+    }
+
+    /// Chooses a shorter height when the system reports a compact vertical layout.
+    private var preferredKeyboardHeight: CGFloat {
+        traitCollection.verticalSizeClass == .compact
+            ? Self.compactKeyboardHeight
+            : Self.regularKeyboardHeight
     }
 
     /// Refreshes host text and permission-dependent state whenever the keyboard appears.

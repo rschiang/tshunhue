@@ -12,12 +12,15 @@ private actor KeyboardCatalogLoader {
     /// Resolves every enabled frame in deterministic source and category order.
     func frames(in applicationSupport: URL) throws -> [CatalogFrame] {
         let directory = applicationSupport.appendingPathComponent("Sources", isDirectory: true)
-        guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
+        guard FileManager.default.fileExists(atPath: directory.path) else {
+            throw KeyboardDataError.catalogUnavailable
+        }
         let files = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         ).filter { $0.lastPathComponent.hasPrefix("source-") && $0.pathExtension == "json" }
+        guard !files.isEmpty else { throw KeyboardDataError.catalogUnavailable }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -48,6 +51,7 @@ private actor KeyboardCatalogLoader {
                 loaded.append(contentsOf: category.frames)
             }
         }
+        guard !loaded.isEmpty else { throw KeyboardDataError.catalogUnavailable }
         return loaded
     }
 }
@@ -212,12 +216,15 @@ actor KeyboardDataStore: KeyboardDataProviding {
 /// Recoverable shared-data failures shown inside the keyboard.
 enum KeyboardDataError: LocalizedError {
     case sharedContainerUnavailable
+    case catalogUnavailable
     case imagesUnavailable
 
     var errorDescription: String? {
         switch self {
         case .sharedContainerUnavailable:
             "Open Tshunhue once before using the keyboard."
+        case .catalogUnavailable:
+            "Open Tshunhue and enable at least one category."
         case .imagesUnavailable:
             "Image Mode is not ready yet."
         }

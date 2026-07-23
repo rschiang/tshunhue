@@ -73,11 +73,12 @@ final class AppModel: ObservableObject {
             applicationSupport = baseDirectory
         } else {
             #if os(iOS)
-            applicationSupport = FileManager.default.containerURL(
+            guard let sharedContainer = FileManager.default.containerURL(
                 forSecurityApplicationGroupIdentifier: Self.appGroupIdentifier
-            )?.appendingPathComponent("Tshunhue", isDirectory: true)
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("Tshunhue", isDirectory: true)
+            ) else {
+                fatalError("Missing App Group entitlement: \(Self.appGroupIdentifier)")
+            }
+            applicationSupport = sharedContainer.appendingPathComponent("Tshunhue", isDirectory: true)
             #else
             applicationSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory,
