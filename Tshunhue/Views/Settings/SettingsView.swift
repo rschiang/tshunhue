@@ -38,14 +38,6 @@ struct SettingsView: View {
             .tabItem {
                 Label("Storage", systemImage: "externaldrive")
             }
-
-            Form {
-                AboutSettingsView()
-            }
-            .formStyle(.grouped)
-            .tabItem {
-                Label("Privacy", systemImage: "eyes")
-            }
         }
         .frame(idealWidth: 520, idealHeight: 480)
         #else

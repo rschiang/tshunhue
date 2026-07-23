@@ -36,6 +36,7 @@ struct CategorySelectionRows: View {
                     if model.isUpdatingCategory(category, in: source) {
                         Spacer()
                         ProgressView()
+                            .controlSize(.small)
                     }
                 }
             }

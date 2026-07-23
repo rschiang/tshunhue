@@ -34,7 +34,7 @@ struct CategorySidebarView: View {
                     ForEach(source.categories.filter { source.enabledCategoryIDs.contains($0.id) }) { category in
                         let key = CategoryKey(sourceURL: source.sourceURL, categoryID: category.id)
                         let name = category.name.hasPrefix(source.name) ? String(category.name.dropFirst(source.name.count).trimmingCharacters(in: .whitespaces)) : category.name
-                        scopeRow(.category(key), title: name, systemImage: "film.stack")
+                        scopeRow(.category(key), title: (!name.isEmpty ? name : category.name), systemImage: "film.stack")
                     }
                 }
             }
