@@ -44,6 +44,7 @@ final class KeyboardViewController: UIInputViewController {
         let host = UIHostingController(rootView: rootView)
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
         view.addSubview(host.view)
         NSLayoutConstraint.activate([
             host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),

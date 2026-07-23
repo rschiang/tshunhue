@@ -22,34 +22,37 @@ struct KeyboardView: View {
     let deleteBackward: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             header
-            status
             resultRow
             editingKeys
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
     }
 
     // MARK: - Header and Status
 
     /// Displays the host-derived query and the optional category filter.
     private var header: some View {
-        HStack(spacing: 8) {
-            Label {
-                Text(model.query.isEmpty ? "Type in the app, then switch keyboards." : model.query)
-                    .foregroundStyle(model.query.isEmpty ? .secondary : .primary)
-                    .lineLimit(1)
-            } icon: {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            HStack(spacing: 10) {
+                if !model.query.isEmpty {
+                    Image(systemName: "magnifyingglass")
+                    Text(model.query)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                } else {
+                    Image(systemName: "clock")
+                    Text("Recent")
+                }
+                Spacer()
             }
-            .font(.callout)
+            .padding(10)
+            .foregroundStyle(.secondary)
+            .background(Capsule().fill(.thinMaterial.opacity(0.15)))
+            .font(.body)
             .frame(maxWidth: .infinity, alignment: .leading)
-
             categoryMenu
         }
     }
@@ -60,53 +63,23 @@ struct KeyboardView: View {
             Button {
                 model.selectCategory(nil)
             } label: {
-                if model.selectedCategory == nil {
-                    Label("All", systemImage: "checkmark")
-                } else {
-                    Text("All")
-                }
+                Label("All", systemImage: (model.selectedCategory == nil) ? "checkmark" : "")
             }
             ForEach(model.categories) { category in
                 Button {
                     model.selectCategory(category.key)
                 } label: {
-                    if model.selectedCategory == category.key {
-                        Label("\(category.name) — \(category.sourceName)", systemImage: "checkmark")
-                    } else {
-                        Text("\(category.name) — \(category.sourceName)")
-                    }
+                    Label(category.name, systemImage: (model.selectedCategory == category.key) ? "checkmark" : "")
                 }
             }
         } label: {
-            Label(selectedCategoryName, systemImage: "line.3.horizontal.decrease.circle")
-                .labelStyle(.titleAndIcon)
+            Label(selectedCategoryName, systemImage: (model.selectedCategory == nil) ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .labelStyle(.iconOnly)
                 .lineLimit(1)
+                .padding(10)
         }
         .disabled(model.categories.isEmpty)
         .accessibilityLabel("Filter Category")
-    }
-
-    /// The concise mode explanation or current non-blocking action feedback.
-    @ViewBuilder
-    private var status: some View {
-        if let actionMessage = model.actionMessage {
-            Label(
-                actionMessage,
-                systemImage: model.actionMessageIsError
-                    ? "exclamationmark.triangle"
-                    : "checkmark.circle"
-            )
-            .foregroundStyle(model.actionMessageIsError ? Color.red : Color.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else if let loadError = model.loadError, !model.results.isEmpty {
-            Label(loadError, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            Label(modeDescription, systemImage: modeSymbol)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 
     // MARK: - Results
@@ -115,7 +88,7 @@ struct KeyboardView: View {
     @ViewBuilder
     private var resultRow: some View {
         if model.isLoading && model.results.isEmpty {
-            ProgressView("Loading Tshunhue…")
+            ProgressView("Loading…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let loadError = model.loadError, model.results.isEmpty {
             compactUnavailable(message: loadError, systemImage: "exclamationmark.triangle")
@@ -125,16 +98,26 @@ struct KeyboardView: View {
                 systemImage: model.query.isEmpty ? "clock" : "magnifyingglass"
             )
         } else {
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 8) {
-                    ForEach(model.results.prefix(KeyboardModel.resultLimit)) { frame in
-                        result(for: frame)
-                            .frame(minHeight: 88, idealHeight: 100, maxHeight: 112)
-                            .containerRelativeFrame(.horizontal, count: 4, spacing: 8)
+            let candidates = model.results.prefix(KeyboardModel.resultLimit)
+            if model.accessMode == .images {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 6) {
+                        ForEach(candidates) { frame in
+                            result(for: frame)
+                        }
                     }
+                    .padding(.vertical, 10)
+                }
+            } else {
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 6) {
+                        ForEach(candidates) { frame in
+                            result(for: frame)
+                        }
+                    }
+                    .padding(.vertical, 10)
                 }
             }
-            .scrollIndicators(.hidden)
         }
     }
 
@@ -150,25 +133,20 @@ struct KeyboardView: View {
                     .font(.caption)
                     .multilineTextAlignment(.leading)
                     .lineLimit(4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(8)
-                    .background(.quaternary, in: .rect(cornerRadius: 8))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(10)
+                    .background(.thickMaterial, in: .rect(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+            .buttonSizing(.flexible)
             .accessibilityHint("Inserts this caption")
         case .images:
-            imageResult(for: frame)
-        }
-    }
-
-    /// Adds drag export only when the host environment enables the shared transfer path.
-    @ViewBuilder
-    private func imageResult(for frame: CatalogFrame) -> some View {
-        if let transferItem = model.transferItem(for: frame) {
-            imageButton(for: frame)
-                .draggable(transferItem)
-        } else {
-            imageButton(for: frame)
+            if let transferItem = model.transferItem(for: frame) {
+                imageButton(for: frame)
+                    .draggable(transferItem)
+            } else {
+                imageButton(for: frame)
+            }
         }
     }
 
@@ -213,23 +191,28 @@ struct KeyboardView: View {
 
     /// Provides the minimal host-text refinement and required keyboard-switch controls.
     private var editingKeys: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             if model.needsInputModeSwitchKey {
                 InputModeSwitchButton(controller: inputModeController)
                     .frame(width: 44, height: 36)
             }
+
             Button(action: insertSpace) {
-                Text("space")
+                Image(systemName: "space")
                     .frame(maxWidth: .infinity)
+                    .foregroundStyle(.secondary.opacity(0))
+                    .padding(10)
             }
             .accessibilityLabel("Space")
+            .buttonStyle(.glass)
+
             Button(action: deleteBackward) {
                 Image(systemName: "delete.left")
-                    .frame(width: 44)
+                    .padding(10)
             }
+            .foregroundStyle(.secondary)
             .accessibilityLabel("Delete")
         }
-        .buttonStyle(.bordered)
     }
 
     /// The currently selected category title used by the compact menu label.
