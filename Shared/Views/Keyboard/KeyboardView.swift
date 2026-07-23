@@ -317,17 +317,12 @@ private struct InputModeSwitchButton: UIViewRepresentable {
 #if DEBUG && TSHUNHUE_APP_TARGET
 #Preview("Keyboard — Text Mode") {
     KeyboardPreviewContainer(mode: .text)
-        .frame(height: 300)
+        .frame(height: 360)
 }
 
 #Preview("Keyboard — Image Mode") {
     KeyboardPreviewContainer(mode: .images)
-        .frame(height: 300)
-}
-
-#Preview("Keyboard — Search") {
-    KeyboardPreviewContainer(mode: .images, query: "normal")
-        .frame(height: 300)
+        .frame(height: 360)
 }
 #endif
 
