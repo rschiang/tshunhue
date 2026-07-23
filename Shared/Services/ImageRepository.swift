@@ -30,6 +30,12 @@ struct ImageThumbnail: @unchecked Sendable {
     let image: CGImage
 }
 
+/// Controls whether an image repository may mutate its on-disk cache.
+enum ImageRepositoryAccess: Sendable, Equatable {
+    case readWrite
+    case readOnly
+}
+
 /// An Objective-C-compatible wrapper used by `NSCache`.
 private final class ThumbnailBox {
     /// The thumbnail retained by the cache.
@@ -86,6 +92,7 @@ actor ImageRepository {
     private let directory: URL
     private let indexURL: URL
     private let byteBudget: Int
+    private let access: ImageRepositoryAccess
     private let client: any HTTPFetching
     private let now: @Sendable () -> Date
     private var entries: [String: ImageCacheEntry] = [:]
@@ -99,18 +106,39 @@ actor ImageRepository {
     init(
         directory: URL,
         byteBudget: Int,
+        access: ImageRepositoryAccess = .readWrite,
         client: any HTTPFetching = HTTPClient(),
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.directory = directory
         self.indexURL = directory.appendingPathComponent("index.json")
         self.byteBudget = byteBudget
+        self.access = access
         self.client = client
         self.now = now
     }
 
     /// Loads the cache index, repairs corruption, and enforces the byte budget.
     func load() throws {
+        if access == .readOnly {
+            guard FileManager.default.fileExists(atPath: indexURL.path) else {
+                entries = [:]
+                return
+            }
+            guard let decoded = try? JSONDecoder().decode(
+                [ImageCacheEntry].self,
+                from: Data(contentsOf: indexURL)
+            ) else {
+                entries = [:]
+                return
+            }
+            entries = Dictionary(uniqueKeysWithValues: decoded.compactMap { entry in
+                let fileURL = directory.appendingPathComponent(entry.filename)
+                return FileManager.default.fileExists(atPath: fileURL.path) ? (entry.key, entry) : nil
+            })
+            return
+        }
+
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         guard FileManager.default.fileExists(atPath: indexURL.path) else { return }
         do {
@@ -167,8 +195,15 @@ actor ImageRepository {
     /// The total number of image bytes tracked by the cache index.
     func cacheSize() -> Int { entries.values.reduce(0) { $0 + $1.byteCount } }
 
+    /// Releases decoded thumbnails while preserving original cached image files.
+    func releaseThumbnails() {
+        thumbnails.removeAllObjects()
+        thumbnailKeysByURL = [:]
+    }
+
     /// Cancels active loads and removes every cached image.
     func clear() throws {
+        guard access == .readWrite else { throw ImageRepositoryError.readOnly }
         for request in inFlight.values { request.task.cancel() }
         for refresh in refreshTasks.values { refresh.task.cancel() }
         accessPersistenceTask?.cancel()
@@ -192,6 +227,9 @@ actor ImageRepository {
         if var entry = entries[key] {
             let fileURL = directory.appendingPathComponent(entry.filename)
             if FileManager.default.fileExists(atPath: fileURL.path) {
+                if access == .readOnly {
+                    return try read(entry, fileURL: fileURL)
+                }
                 let accessDate = now()
                 entry.lastAccess = accessDate
                 entries[key] = entry
@@ -202,9 +240,10 @@ actor ImageRepository {
                 return try read(entry, fileURL: fileURL)
             }
             entries[key] = nil
-            try persistIndexNow()
+            if access == .readWrite { try persistIndexNow() }
         }
 
+        guard access == .readWrite else { throw ImageRepositoryError.notCached }
         let result = try await client.get(url, byteLimit: CatalogLimits.imageBytes)
         guard let data = result.data else { throw ImageRepositoryError.missingData }
         try Task.checkCancellation()
@@ -424,12 +463,16 @@ actor ImageRepository {
 
 /// Failures produced while loading and inspecting images.
 enum ImageRepositoryError: LocalizedError {
+    case notCached
+    case readOnly
     case missingData
     case cannotDecode
     case tooManyPixels
 
     var errorDescription: String? {
         switch self {
+        case .notCached: "The image is not available in the shared cache."
+        case .readOnly: "The shared image cache is read-only."
         case .missingData: "The image server returned no data."
         case .cannotDecode: "The file is not a supported static image."
         case .tooManyPixels: "The image exceeds the pixel limit."

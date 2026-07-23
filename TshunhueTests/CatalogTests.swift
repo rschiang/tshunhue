@@ -451,7 +451,16 @@ struct CatalogBrowsingTests {
             scope: .category(categoryKey),
             sources: [firstSource]
         )
-        #expect(subsectionSections.map(\.title) == ["Episode 1", "Episode 2", "None"])
+        #expect(subsectionSections.map(\.id) == [
+            .subsection(categoryKey, "ep1"),
+            .subsection(categoryKey, "ep2"),
+            .subsection(categoryKey, nil),
+        ])
+        #expect(subsectionSections.map(\.title) == [
+            "Episode 1",
+            "Episode 2",
+            String(localized: "None"),
+        ])
         #expect(subsectionSections[1].frames.map(\.effectiveID) == ["ep2-b", "ep2-a"])
     }
 
@@ -583,6 +592,76 @@ struct ImageRepositoryTests {
 
         #expect(await repository.cacheSize() == 0)
         #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+    }
+
+    @Test func readOnlyCacheIgnoresCorruptionWithoutRepairingSharedFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let indexURL = directory.appendingPathComponent("index.json")
+        let orphanURL = directory.appendingPathComponent("orphan.image")
+        let brokenIndex = Data("broken".utf8)
+        try brokenIndex.write(to: indexURL)
+        try Data("orphan".utf8).write(to: orphanURL)
+
+        let repository = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024,
+            access: .readOnly
+        )
+        try await repository.load()
+
+        #expect(await repository.cacheSize() == 0)
+        #expect(try Data(contentsOf: indexURL) == brokenIndex)
+        #expect(FileManager.default.fileExists(atPath: orphanURL.path))
+    }
+
+    @Test func readOnlyCacheServesLocalBytesWithoutWritingOrUsingNetwork() async throws {
+        let cachedURL = URL(string: "https://images.example/cached.jpg")!
+        let missingURL = URL(string: "https://images.example/missing.jpg")!
+        let jpeg = try makeImageData(
+            type: .jpeg,
+            width: 2,
+            height: 1,
+            color: CGColor(red: 1, green: 0, blue: 0, alpha: 1)
+        )
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let writer = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            client: ScriptedHTTPClient(steps: [.init(url: cachedURL, status: 200, data: jpeg)])
+        )
+        try await writer.load()
+        _ = try await writer.asset(for: cachedURL)
+
+        let indexURL = directory.appendingPathComponent("index.json")
+        let markerDate = Date(timeIntervalSinceReferenceDate: 123_456)
+        try FileManager.default.setAttributes([.modificationDate: markerDate], ofItemAtPath: indexURL.path)
+        let originalIndex = try Data(contentsOf: indexURL)
+        let originalDate = try #require(
+            FileManager.default.attributesOfItem(atPath: indexURL.path)[.modificationDate] as? Date
+        )
+        let client = ScriptedHTTPClient(steps: [])
+        let reader = ImageRepository(
+            directory: directory,
+            byteBudget: 1_024 * 1_024,
+            access: .readOnly,
+            client: client
+        )
+        try await reader.load()
+
+        #expect(try await reader.asset(for: cachedURL).data == jpeg)
+        do {
+            _ = try await reader.asset(for: missingURL)
+            Issue.record("Expected a read-only cache miss")
+        } catch ImageRepositoryError.notCached {
+            // Expected: the keyboard decides whether Full Access permits a temporary download.
+        }
+        #expect(await client.requests.isEmpty)
+        #expect(try Data(contentsOf: indexURL) == originalIndex)
+        let finalDate = try #require(
+            FileManager.default.attributesOfItem(atPath: indexURL.path)[.modificationDate] as? Date
+        )
+        #expect(finalDate == originalDate)
     }
 
     @Test func cacheFilenameUsesDetectedImageTypeAndSurvivesReload() async throws {

@@ -38,9 +38,8 @@ private struct JPEGFileTask {
 /// Coalesces transfer work and publishes one non-blocking recent-history update.
 private actor FrameTransferPreparation {
     private let frame: CatalogFrame
-    private let repository: ImageRepository
-    private let recentStore: RecentStore
-    private let onRecentChange: @Sendable () async -> Void
+    private let assetProvider: @Sendable (URL) async throws -> ImageAsset
+    private let recentRecorder: @Sendable (FrameIdentity) async throws -> Void
     private var preparationTask: JPEGPreparationTask?
     private var fileTask: JPEGFileTask?
     private var didPublishRecent = false
@@ -48,14 +47,12 @@ private actor FrameTransferPreparation {
     /// Creates shared preparation state for one transferable value.
     init(
         frame: CatalogFrame,
-        repository: ImageRepository,
-        recentStore: RecentStore,
-        onRecentChange: @escaping @Sendable () async -> Void
+        assetProvider: @escaping @Sendable (URL) async throws -> ImageAsset,
+        recentRecorder: @escaping @Sendable (FrameIdentity) async throws -> Void
     ) {
         self.frame = frame
-        self.repository = repository
-        self.recentStore = recentStore
-        self.onRecentChange = onRecentChange
+        self.assetProvider = assetProvider
+        self.recentRecorder = recentRecorder
     }
 
     /// Returns coalesced JPEG bytes and records the successful use asynchronously.
@@ -83,9 +80,9 @@ private actor FrameTransferPreparation {
         if let preparationTask { return try await preparationTask.task.value }
         let id = UUID()
         let frame = frame
-        let repository = repository
+        let assetProvider = assetProvider
         let task = Task {
-            let asset = try await repository.asset(for: frame.imageURL)
+            let asset = try await assetProvider(frame.imageURL)
             return PreparedJPEG(
                 data: try JPEGEncoder.data(for: asset),
                 cachedFileURL: asset.type.conforms(to: .jpeg) ? asset.localURL : nil
@@ -121,12 +118,10 @@ private actor FrameTransferPreparation {
         guard !didPublishRecent else { return }
         didPublishRecent = true
         let identity = frame.identity
-        let recentStore = recentStore
-        let onRecentChange = onRecentChange
+        let recentRecorder = recentRecorder
         Task {
             do {
-                try await recentStore.record(identity)
-                await onRecentChange()
+                try await recentRecorder(identity)
             } catch {
                 // Recent history is ancillary and must never make a transfer fail.
             }
@@ -169,9 +164,25 @@ struct FrameTransferItem: Transferable, Sendable {
         self.frame = frame
         self.preparation = FrameTransferPreparation(
             frame: frame,
-            repository: repository,
-            recentStore: recentStore,
-            onRecentChange: onRecentChange
+            assetProvider: { try await repository.asset(for: $0) },
+            recentRecorder: { identity in
+                try await recentStore.record(identity)
+                await onRecentChange()
+            }
+        )
+    }
+
+    /// Creates a transferable frame backed by caller-supplied image and history services.
+    init(
+        frame: CatalogFrame,
+        assetProvider: @escaping @Sendable (URL) async throws -> ImageAsset,
+        recentRecorder: @escaping @Sendable (FrameIdentity) async throws -> Void
+    ) {
+        self.frame = frame
+        self.preparation = FrameTransferPreparation(
+            frame: frame,
+            assetProvider: assetProvider,
+            recentRecorder: recentRecorder
         )
     }
 

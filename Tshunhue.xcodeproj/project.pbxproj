@@ -8,15 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		2BC921CA301053E800B0091C /* LICENSE.md in Resources */ = {isa = PBXBuildFile; fileRef = 2BC921C9301053E800B0091C /* LICENSE.md */; };
-		2BC922793010549400B0091C /* Tshunhue.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 2BC922773010549400B0091C /* Tshunhue.xcconfig */; };
 		A10000000000000000000003 /* Tshunhue Keyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* Tshunhue Keyboard.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A10000000000000000000021 /* Tshunhue/Models/CatalogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* Tshunhue/Models/CatalogModels.swift */; };
-		A10000000000000000000022 /* Tshunhue/Models/CatalogValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* Tshunhue/Models/CatalogValidator.swift */; };
-		A10000000000000000000023 /* Tshunhue/Services/HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* Tshunhue/Services/HTTPClient.swift */; };
-		A10000000000000000000024 /* Tshunhue/Services/SourceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Tshunhue/Services/SourceStore.swift */; };
-		A10000000000000000000025 /* Tshunhue/Services/ImageRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* Tshunhue/Services/ImageRepository.swift */; };
-		A10000000000000000000026 /* Tshunhue/Services/RecentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* Tshunhue/Services/RecentStore.swift */; };
-		A10000000000000000000027 /* Tshunhue/Services/JPEGEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* Tshunhue/Services/JPEGEncoder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,13 +56,6 @@
 		2BC921C9301053E800B0091C /* LICENSE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = LICENSE.md; sourceTree = "<group>"; };
 		2BC922773010549400B0091C /* Tshunhue.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tshunhue.xcconfig; sourceTree = "<group>"; };
 		A10000000000000000000001 /* Tshunhue Keyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Tshunhue Keyboard.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
-		A10000000000000000000011 /* Tshunhue/Models/CatalogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Models/CatalogModels.swift; sourceTree = SOURCE_ROOT; };
-		A10000000000000000000012 /* Tshunhue/Models/CatalogValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Models/CatalogValidator.swift; sourceTree = SOURCE_ROOT; };
-		A10000000000000000000013 /* Tshunhue/Services/HTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/HTTPClient.swift; sourceTree = SOURCE_ROOT; };
-		A10000000000000000000014 /* Tshunhue/Services/SourceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/SourceStore.swift; sourceTree = SOURCE_ROOT; };
-		A10000000000000000000015 /* Tshunhue/Services/ImageRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/ImageRepository.swift; sourceTree = SOURCE_ROOT; };
-		A10000000000000000000016 /* Tshunhue/Services/RecentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/RecentStore.swift; sourceTree = SOURCE_ROOT; };
-		A10000000000000000000017 /* Tshunhue/Services/JPEGEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tshunhue/Services/JPEGEncoder.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -119,6 +104,11 @@
 			path = TshunhueKeyboard;
 			sourceTree = "<group>";
 		};
+		A20000000000000000000001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,8 +149,8 @@
 				2BC922773010549400B0091C /* Tshunhue.xcconfig */,
 				2BC921C9301053E800B0091C /* LICENSE.md */,
 				2B335C57300F504E0069B097 /* Tshunhue */,
+				A20000000000000000000001 /* Shared */,
 				A10000000000000000000002 /* TshunhueKeyboard */,
-				A10000000000000000000010 /* Keyboard Shared Sources */,
 				2B335C65300F50500069B097 /* TshunhueTests */,
 				2B335C6F300F50500069B097 /* TshunhueUITests */,
 				2B335C56300F504E0069B097 /* Products */,
@@ -176,20 +166,6 @@
 				2B335C6C300F50500069B097 /* TshunhueUITests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		A10000000000000000000010 /* Keyboard Shared Sources */ = {
-			isa = PBXGroup;
-			children = (
-				A10000000000000000000011 /* Tshunhue/Models/CatalogModels.swift */,
-				A10000000000000000000012 /* Tshunhue/Models/CatalogValidator.swift */,
-				A10000000000000000000013 /* Tshunhue/Services/HTTPClient.swift */,
-				A10000000000000000000014 /* Tshunhue/Services/SourceStore.swift */,
-				A10000000000000000000015 /* Tshunhue/Services/ImageRepository.swift */,
-				A10000000000000000000016 /* Tshunhue/Services/RecentStore.swift */,
-				A10000000000000000000017 /* Tshunhue/Services/JPEGEncoder.swift */,
-			);
-			name = "Keyboard Shared Sources";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -211,6 +187,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				2B335C57300F504E0069B097 /* Tshunhue */,
+				A20000000000000000000001 /* Shared */,
 			);
 			name = Tshunhue;
 			packageProductDependencies = (
@@ -279,6 +256,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A10000000000000000000002 /* TshunhueKeyboard */,
+				A20000000000000000000001 /* Shared */,
 			);
 			name = "Tshunhue Keyboard";
 			packageProductDependencies = (
@@ -363,7 +341,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2BC922793010549400B0091C /* Tshunhue.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -395,13 +372,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000000000000000000021 /* Tshunhue/Models/CatalogModels.swift in Sources */,
-				A10000000000000000000022 /* Tshunhue/Models/CatalogValidator.swift in Sources */,
-				A10000000000000000000023 /* Tshunhue/Services/HTTPClient.swift in Sources */,
-				A10000000000000000000024 /* Tshunhue/Services/SourceStore.swift in Sources */,
-				A10000000000000000000025 /* Tshunhue/Services/ImageRepository.swift in Sources */,
-				A10000000000000000000026 /* Tshunhue/Services/RecentStore.swift in Sources */,
-				A10000000000000000000027 /* Tshunhue/Services/JPEGEncoder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -584,6 +554,7 @@
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) TSHUNHUE_APP_TARGET";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
