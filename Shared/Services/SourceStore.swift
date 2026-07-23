@@ -43,6 +43,25 @@ struct CachedDocument: Codable, Sendable {
     var data: Data
     /// Validators and freshness metadata for conditional refreshes.
     var metadata: HTTPMetadata
+    /// The last time the document was downloaded or successfully revalidated.
+    var validatedAt: Date?
+
+    /// Creates a cached document, accepting a missing validation date for archive migration.
+    init(data: Data, metadata: HTTPMetadata, validatedAt: Date? = nil) {
+        self.data = data
+        self.metadata = metadata
+        self.validatedAt = validatedAt
+    }
+
+    /// Returns whether the document can be reused without contacting its origin.
+    func isFresh(at date: Date, refreshFrequency: RefreshFrequency) -> Bool {
+        if let expires = metadata.expires {
+            return date < expires
+        }
+        guard let validatedAt else { return false }
+        guard let interval = refreshFrequency.interval else { return true }
+        return date.timeIntervalSince(validatedAt) < interval
+    }
 }
 
 /// The complete persisted state for one catalog source.
@@ -57,7 +76,7 @@ struct SourceArchive: Codable, Identifiable, Sendable {
     var index: CachedDocument
     /// Categories selected by the user.
     var enabledCategoryIDs: Set<String>
-    /// Last valid documents keyed by enabled category identifier.
+    /// Last valid documents keyed by downloaded category identifier.
     var categories: [String: CachedDocument]
     /// The most recent complete successful refresh.
     var lastSuccessfulRefresh: Date?
@@ -79,7 +98,7 @@ struct SourceSummary: Identifiable, Hashable, Sendable {
     let isDefault: Bool
     /// Validated category descriptors from the index.
     let categories: [CategoryDescriptor]
-    /// Category identifiers currently downloaded and searchable.
+    /// Category identifiers currently enabled and searchable.
     let enabledCategoryIDs: Set<String>
     /// The most recent complete successful refresh.
     let lastSuccessfulRefresh: Date?
@@ -143,10 +162,44 @@ actor SourceStore {
 
     /// Atomically persists and updates an archive.
     func save(_ archive: SourceArchive) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try encoder.encode(archive)
-        try data.write(to: fileURL(for: archive.id), options: .atomic)
-        archives[archive.id] = archive
+        try persist(archive)
+    }
+
+    /// Atomically changes selection state without discarding a retained manifest.
+    @discardableResult
+    func setCategoryEnabled(_ categoryID: String, enabled: Bool, in sourceID: UUID) throws -> SourceArchive? {
+        guard var archive = archives[sourceID] else { return nil }
+        if enabled {
+            archive.enabledCategoryIDs.insert(categoryID)
+        } else {
+            archive.enabledCategoryIDs.remove(categoryID)
+        }
+        try persist(archive)
+        return archive
+    }
+
+    /// Atomically stores a validated category document and enables it.
+    @discardableResult
+    func storeAndEnable(
+        _ document: CachedDocument,
+        categoryID: String,
+        in sourceID: UUID
+    ) throws -> SourceArchive? {
+        guard var archive = archives[sourceID] else { return nil }
+        archive.categories[categoryID] = document
+        archive.enabledCategoryIDs.insert(categoryID)
+        try persist(archive)
+        return archive
+    }
+
+    /// Atomically discards one retained category document without changing other selections.
+    @discardableResult
+    func removeCategoryDocument(_ categoryID: String, in sourceID: UUID) throws -> SourceArchive? {
+        guard var archive = archives[sourceID] else { return nil }
+        archive.categories.removeValue(forKey: categoryID)
+        archive.enabledCategoryIDs.remove(categoryID)
+        try persist(archive)
+        return archive
     }
 
     /// Removes an archive from memory and disk.
@@ -158,5 +211,13 @@ actor SourceStore {
     /// Returns the deterministic archive filename for a source identifier.
     private func fileURL(for id: UUID) -> URL {
         directory.appendingPathComponent("source-\(id.uuidString).json")
+    }
+
+    /// Persists the latest version of one archive without replacing unrelated mutations.
+    private func persist(_ archive: SourceArchive) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = try encoder.encode(archive)
+        try data.write(to: fileURL(for: archive.id), options: .atomic)
+        archives[archive.id] = archive
     }
 }

@@ -378,6 +378,12 @@ struct CatalogBrowsingTests {
             recentIdentities: [frames[2].identity, frames[0].identity]
         )
         #expect(recentFrames.map(\.effectiveID) == ["3", "1"])
+        let hiddenRecentFrames = CatalogScopeResolver.frames(
+            for: .recents,
+            in: frames.filter { $0.identity != frames[0].identity },
+            recentIdentities: [frames[2].identity, frames[0].identity]
+        )
+        #expect(hiddenRecentFrames.map(\.effectiveID) == ["3"])
         #expect(CatalogScopeResolver.isValid(.index(firstURL), in: [firstSource, secondSource]))
         #expect(!CatalogScopeResolver.isValid(.index(URL(string: "https://missing.example/index.json")!), in: [firstSource, secondSource]))
     }
@@ -513,6 +519,47 @@ struct CatalogBrowsingTests {
 
 // MARK: - Recents
 
+/// Tests archive persistence and merge-safe category selection updates.
+struct SourceStoreTests {
+    @Test func disabledManifestSurvivesReloadAndConcurrentSelectionsMerge() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sourceURL = URL(string: "https://example.com/index.json")!
+        let indexData = Data(#"{"version":1,"name":"Example","categories":[{"id":"a","name":"A","url":"a.json"},{"id":"b","name":"B","url":"b.json"}]}"#.utf8)
+        let date = Date(timeIntervalSince1970: 1_000)
+        let metadata = HTTPMetadata(etag: "v1", lastModified: nil, expires: date.addingTimeInterval(600))
+        let archive = SourceArchive(
+            id: UUID(),
+            sourceURL: sourceURL,
+            isDefault: false,
+            index: CachedDocument(data: indexData, metadata: metadata, validatedAt: date),
+            enabledCategoryIDs: ["a"],
+            categories: [
+                "a": CachedDocument(data: Data("a".utf8), metadata: metadata, validatedAt: date),
+                "b": CachedDocument(data: Data("b".utf8), metadata: metadata, validatedAt: date),
+            ],
+            lastSuccessfulRefresh: date,
+            lastAttempt: date,
+            refreshError: nil
+        )
+        let store = SourceStore(directory: directory)
+        try await store.save(archive)
+        try await store.setCategoryEnabled("a", enabled: false, in: archive.id)
+
+        let reloadedStore = SourceStore(directory: directory)
+        try await reloadedStore.load()
+        let disabled = try #require(await reloadedStore.archive(id: archive.id))
+        #expect(disabled.enabledCategoryIDs.isEmpty)
+        #expect(disabled.categories["a"]?.data == Data("a".utf8))
+
+        async let first = reloadedStore.setCategoryEnabled("a", enabled: true, in: archive.id)
+        async let second = reloadedStore.setCategoryEnabled("b", enabled: true, in: archive.id)
+        _ = try await (first, second)
+        let merged = try #require(await reloadedStore.archive(id: archive.id))
+        #expect(merged.enabledCategoryIDs == ["a", "b"])
+        #expect(Set(merged.categories.keys) == ["a", "b"])
+    }
+}
+
 /// Tests bounded recent-item persistence and scoped removal.
 struct RecentStoreTests {
     @Test func storesFiveDeduplicatedItems() async throws {
@@ -550,6 +597,131 @@ struct RecentStoreTests {
 
 /// Tests conditional refreshes and last-known-good archive behavior.
 struct SyncTests {
+    @Test func freshnessUsesServerExpiryThenTheConfiguredRefreshInterval() {
+        let date = Date(timeIntervalSince1970: 10_000)
+        let future = CachedDocument(
+            data: Data(),
+            metadata: HTTPMetadata(etag: nil, lastModified: nil, expires: date.addingTimeInterval(60)),
+            validatedAt: nil
+        )
+        let expired = CachedDocument(
+            data: Data(),
+            metadata: HTTPMetadata(etag: nil, lastModified: nil, expires: date),
+            validatedAt: date
+        )
+        let fallback = CachedDocument(
+            data: Data(),
+            metadata: HTTPMetadata(etag: nil, lastModified: nil, expires: nil),
+            validatedAt: date.addingTimeInterval(-172_800)
+        )
+        let migrated = CachedDocument(
+            data: Data(),
+            metadata: HTTPMetadata(etag: nil, lastModified: nil, expires: nil)
+        )
+
+        #expect(future.isFresh(at: date, refreshFrequency: .daily))
+        #expect(!expired.isFresh(at: date, refreshFrequency: .manual))
+        #expect(fallback.isFresh(at: date, refreshFrequency: .weekly))
+        #expect(!fallback.isFresh(at: date, refreshFrequency: .daily))
+        #expect(fallback.isFresh(at: date, refreshFrequency: .manual))
+        #expect(!migrated.isFresh(at: date, refreshFrequency: .manual))
+    }
+
+    @Test func freshDisabledManifestNeedsNoRequestButExpiredManifestDownloadsAsNew() async throws {
+        let date = Date(timeIntervalSince1970: 20_000)
+        let sourceURL = URL(string: "https://example.com/index.json")!
+        let categoryURL = URL(string: "https://example.com/show.json")!
+        let indexData = Data(#"{"version":1,"name":"Example","categories":[{"id":"show","name":"Show","language":"ja","url":"show.json"}]}"#.utf8)
+        let oldData = Data(#"{"version":1,"id":"show","name":"Show","language":"ja","frames":[{"url":"old.png","caption":"Old"}]}"#.utf8)
+        let newData = Data(#"{"version":1,"id":"show","name":"Show","language":"ja","frames":[{"url":"new.png","caption":"New"}]}"#.utf8)
+        let client = ScriptedHTTPClient(steps: [
+            .init(url: categoryURL, status: 200, data: newData, headers: ["ETag": "new"]),
+        ])
+        let service = CatalogSyncService(client: client, now: { date })
+        var archive = SourceArchive(
+            id: UUID(),
+            sourceURL: sourceURL,
+            isDefault: false,
+            index: CachedDocument(
+                data: indexData,
+                metadata: HTTPMetadata(etag: "index", lastModified: nil, expires: nil),
+                validatedAt: date
+            ),
+            enabledCategoryIDs: [],
+            categories: [
+                "show": CachedDocument(
+                    data: oldData,
+                    metadata: HTTPMetadata(etag: "old", lastModified: nil, expires: date.addingTimeInterval(60)),
+                    validatedAt: date
+                ),
+            ],
+            lastSuccessfulRefresh: date,
+            lastAttempt: date,
+            refreshError: nil
+        )
+
+        #expect(try await service.freshCachedCategoryDocument("show", in: archive, refreshFrequency: .weekly)?.data == oldData)
+        #expect(await client.requests.isEmpty)
+
+        archive.categories["show"]?.metadata.expires = date
+        #expect(try await service.freshCachedCategoryDocument("show", in: archive, refreshFrequency: .weekly) == nil)
+        let replacement = try await service.downloadCategoryDocument("show", in: archive)
+        #expect(replacement.data == newData)
+        #expect(replacement.validatedAt == date)
+        let requests = await client.requests
+        #expect(requests.count == 1)
+        #expect(requests[0].validators == nil)
+    }
+
+    @Test func refreshContactsOnlyEnabledCategoriesAndPrunesExpiredDisabledCache() async throws {
+        let date = Date(timeIntervalSince1970: 30_000)
+        let sourceURL = URL(string: "https://example.com/index.json")!
+        let enabledURL = URL(string: "https://example.com/enabled.json")!
+        let indexData = Data(#"{"version":1,"name":"Example","categories":[{"id":"enabled","name":"Enabled","url":"enabled.json"},{"id":"fresh","name":"Fresh","url":"fresh.json"},{"id":"expired","name":"Expired","url":"expired.json"}]}"#.utf8)
+        let enabledData = Data(#"{"version":1,"id":"enabled","name":"Enabled","language":"en","frames":[]}"#.utf8)
+        let client = ScriptedHTTPClient(steps: [
+            .init(url: sourceURL, status: 304, data: nil),
+            .init(url: enabledURL, status: 304, data: nil),
+        ])
+        let service = CatalogSyncService(client: client, now: { date })
+        let freshMetadata = HTTPMetadata(etag: "fresh", lastModified: nil, expires: date.addingTimeInterval(60))
+        let archive = SourceArchive(
+            id: UUID(),
+            sourceURL: sourceURL,
+            isDefault: false,
+            index: CachedDocument(
+                data: indexData,
+                metadata: HTTPMetadata(etag: "index", lastModified: nil, expires: date),
+                validatedAt: date.addingTimeInterval(-60)
+            ),
+            enabledCategoryIDs: ["enabled"],
+            categories: [
+                "enabled": CachedDocument(
+                    data: enabledData,
+                    metadata: HTTPMetadata(etag: "enabled", lastModified: nil, expires: date),
+                    validatedAt: date.addingTimeInterval(-60)
+                ),
+                "fresh": CachedDocument(data: Data("fresh".utf8), metadata: freshMetadata, validatedAt: date),
+                "expired": CachedDocument(
+                    data: Data("expired".utf8),
+                    metadata: HTTPMetadata(etag: "expired", lastModified: nil, expires: date),
+                    validatedAt: date.addingTimeInterval(-60)
+                ),
+            ],
+            lastSuccessfulRefresh: date.addingTimeInterval(-60),
+            lastAttempt: date.addingTimeInterval(-60),
+            refreshError: nil
+        )
+
+        let refreshed = await service.refresh(archive, refreshFrequency: .weekly)
+        #expect(refreshed.enabledCategoryIDs == ["enabled"])
+        #expect(Set(refreshed.categories.keys) == ["enabled", "fresh"])
+        let requests = await client.requests
+        #expect(requests.map(\.url) == [sourceURL, enabledURL])
+        #expect(requests[0].validators?.etag == "index")
+        #expect(requests[1].validators?.etag == "enabled")
+    }
+
     @Test func conditionalRefreshPreservesTheCompleteLastKnownGoodCatalog() async throws {
         let sourceURL = URL(string: "https://example.com/index.json")!
         let categoryURL = URL(string: "https://example.com/show.json")!

@@ -39,8 +39,7 @@ struct CategorySelectionRows: View {
                     }
                 }
             }
-            // Serialize category changes within a source to avoid conflicting writes.
-            .disabled(model.isWorking || model.isUpdatingCategories(in: source))
+            .disabled(model.isWorking || model.isUpdatingCategory(category, in: source))
         }
     }
 

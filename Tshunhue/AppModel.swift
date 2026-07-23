@@ -58,6 +58,7 @@ final class AppModel: ObservableObject {
     /// The shared image loader and cache used by app views and transfers.
     let imageRepository: ImageRepository
     private var searchTask: Task<Void, Never>?
+    private var catalogReloadGeneration = 0
     /// Desired category values awaiting download, validation, and persistence.
     @Published private var pendingCategorySelections: [CategoryKey: Bool] = [:]
 
@@ -117,6 +118,7 @@ final class AppModel: ObservableObject {
             try await recentStore.load()
             try await imageRepository.load()
             await restoreDefaultSources()
+            await pruneDisabledCatalogCache()
             await reloadCatalog()
             needsCategorySelection = !sources.isEmpty
                 && sources.allSatisfy { $0.enabledCategoryIDs.isEmpty }
@@ -164,21 +166,39 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Enables or disables a category and downloads or removes its metadata.
+    /// Enables or disables a category while reusing only a fresh retained manifest.
     func setCategory(_ descriptor: CategoryDescriptor, in source: SourceSummary, enabled: Bool) async {
         let key = CategoryKey(sourceURL: source.sourceURL, categoryID: descriptor.id)
-        guard !isUpdatingCategories(in: source),
-              source.enabledCategoryIDs.contains(descriptor.id) != enabled,
-              let archive = await sourceStore.archive(id: source.id) else { return }
+        guard !isWorking,
+              pendingCategorySelections[key] == nil,
+              source.enabledCategoryIDs.contains(descriptor.id) != enabled else { return }
 
-        // Reflect intent immediately while preventing conflicting writes to this source.
+        // Reflect intent immediately while allowing unrelated categories to keep changing.
         pendingCategorySelections[key] = enabled
         defer { pendingCategorySelections.removeValue(forKey: key) }
+        guard let archive = await sourceStore.archive(id: source.id),
+              archive.enabledCategoryIDs.contains(descriptor.id) != enabled else { return }
         do {
-            let updated = try await syncService.setCategory(descriptor.id, enabled: enabled, in: archive)
-            try await sourceStore.save(updated)
             if !enabled {
-                try await recentStore.remove(categoryID: descriptor.id, sourceURL: source.sourceURL)
+                try await sourceStore.setCategoryEnabled(descriptor.id, enabled: false, in: source.id)
+            } else if try await syncService.freshCachedCategoryDocument(
+                descriptor.id,
+                in: archive,
+                refreshFrequency: refreshFrequency
+            ) != nil {
+                try await sourceStore.setCategoryEnabled(descriptor.id, enabled: true, in: source.id)
+            } else {
+                try await sourceStore.removeCategoryDocument(descriptor.id, in: source.id)
+                guard let latestArchive = await sourceStore.archive(id: source.id) else { return }
+                let document = try await syncService.downloadCategoryDocument(
+                    descriptor.id,
+                    in: latestArchive
+                )
+                try await sourceStore.storeAndEnable(
+                    document,
+                    categoryID: descriptor.id,
+                    in: source.id
+                )
             }
             await reloadCatalog()
         } catch {
@@ -188,12 +208,13 @@ final class AppModel: ObservableObject {
 
     /// Refreshes every source that is forced or due under the current schedule.
     func refreshAll(force: Bool = true) async {
+        guard !hasPendingCategoryUpdates else { return }
         isWorking = true
         defer { isWorking = false }
         for archive in await sourceStore.allArchives() where force || isRefreshDue(archive) {
-            let updated = await syncService.refresh(archive)
+            let updated = await syncService.refresh(archive, refreshFrequency: refreshFrequency)
             do {
-                try await sourceStore.save(updated)
+                try await saveSynchronizedArchive(updated, replacing: archive)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -398,6 +419,8 @@ final class AppModel: ObservableObject {
 
     /// Revalidates persisted sources and rebuilds observable catalog state.
     private func reloadCatalog() async {
+        catalogReloadGeneration += 1
+        let generation = catalogReloadGeneration
         var nextSources: [SourceSummary] = []
         var nextFrames: [CatalogFrame] = []
         for archive in await sourceStore.allArchives() {
@@ -408,14 +431,42 @@ final class AppModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         }
+        guard generation == catalogReloadGeneration else { return }
         sources = nextSources
         allFrames = nextFrames
         if !CatalogScopeResolver.isValid(selectedScope, in: nextSources) {
             selectedScope = Self.defaultScope
         }
         await refreshRecentFrames()
+        guard generation == catalogReloadGeneration else { return }
         await searchIndex.replace(with: nextFrames)
+        guard generation == catalogReloadGeneration else { return }
         await updateDisplayedFrames()
+    }
+
+    /// Discards expired disabled manifests and identities for categories removed upstream.
+    private func pruneDisabledCatalogCache() async {
+        for archive in await sourceStore.allArchives() {
+            do {
+                let pruned = try await syncService.pruneDisabledCache(
+                    in: archive,
+                    refreshFrequency: refreshFrequency
+                )
+                try await saveSynchronizedArchive(pruned, replacing: archive)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Saves a synchronized archive and removes recents only for categories gone from its index.
+    private func saveSynchronizedArchive(_ archive: SourceArchive, replacing original: SourceArchive) async throws {
+        let originalCategoryIDs = Set(try await syncService.summary(of: original).categories.map(\.id))
+        let currentCategoryIDs = Set(try await syncService.summary(of: archive).categories.map(\.id))
+        try await sourceStore.save(archive)
+        for categoryID in originalCategoryIDs.subtracting(currentCategoryIDs) {
+            try await recentStore.remove(categoryID: categoryID, sourceURL: original.sourceURL)
+        }
     }
 
     /// Runs the automatic refresh policy after startup.
